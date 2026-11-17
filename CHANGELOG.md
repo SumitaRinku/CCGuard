@@ -13,6 +13,7 @@
 
 - 安装版自带思源黑体 Noto Sans SC（SIL OFL 1.1），各机界面字体一致。构建时从 google/fonts 固定提交 `a85815a4` 下载并校验大小与 SHA-256，字体不进 git；WebView 面板以 `@font-face` 首选加载，tkinter 面板优先 `Noto Sans SC`。
 - 验证：完整单元测试通过；本机构建 exe 自检 23 项（含字体与许可文件）通过，实际面板加载了打包字体；CI 构建安装程序并通过静默安装、自检、卸载。
+- 发布：本仓库 `v0.6.1`（提交 `463ef26`）。`CCGuard-Setup-0.6.1.exe` 由 `Windows installer` 工作流在发布时构建并附上，SHA-256 `c7842fc8f8fcef2694cb4a0154bbf98ee99d5827b74267190bafb1b706ea2e10`，另附 `SHA256SUMS-installer-0.6.1.txt`；下载回的资产哈希一致。发布构建下载并校验字体，通过打包自检 23 项、静默安装、安装后自检、静默卸载；推送 CI 在 Linux、Windows（3.12）与 Linux 3.10 通过。原仓库已改名为 Claude-Guardian 并归档为只读，README 开头注明本仓库地址
 
 ## 0.6.0（2026-11-17）
 
