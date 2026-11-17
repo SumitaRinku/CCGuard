@@ -1,14 +1,13 @@
 # 实时监测与通知（本机只读面板）
 
-面向已经部署好代理、TUN 和防火墙的 Windows 电脑：给出一个实时状态面板，并在关键检查项失效时用页面通知或系统气泡提醒。
+目标是降低 Claude 风控风险：持续确认 Windows 上的流量始终走同一个代理出口，没有真实 IP、DNS 或 IPv6 泄露；任何一项失效时用托盘和系统通知提醒。
 
 ## 用途与边界
 
 - **只读**：不修改防火墙、不重启代理核心、不改任何配置，不调用 `Set-*`。
-- **监测不联网**：10 项检查只读本机，不发起出站请求，不属于联网探测，也不触发接触门禁。唯一会联网的是用户手动点的[出口评分](#exit-score)，只请求 Cloudflare 与 ip.net.coffee，不访问 Claude。
+- **监测不联网**：10 项检查只读本机。联网的只有手动点的[出口评分](#exit-score)和检查更新，都不连接 Claude。
 - **不需要管理员**：以普通用户运行，不做任何需要提权的操作。
-- **不替代验收**：监测通过只表示本机状态与配置符合预期，不代表出口、DNS、账号或平台验收已通过。
-- **v1 只支持 Windows**；macOS 与 Linux 的采集返回未知，界面仍可打开但所有项显示 `unknown`。
+- **只支持 Windows 10/11**。
 
 ## 支持范围
 
@@ -151,7 +150,6 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 2. `fail` 项按既有流程处理：核心与 TUN 由客户端恢复；防火墙默认出站被改回 Allow 时按回滚命令恢复。
 3. `degraded` 项通常是配置漂移：订阅更新或客户端升级可能改回 DNS 覆写、关闭严格路由或更换配置键名，恢复后重新核对。
 4. 核心、TUN 或配置项长期显示 `unknown`：先用 `detect` 核对进程名和网卡名，再检查 `config_format` 与 `runtime_config` 是否指向客户端实际加载的配置。
-5. 监测本身不修改任何东西；不要把它当成修复入口。
 
 <a id="principles"></a>
 ## 检测原理与检测日志
@@ -176,12 +174,12 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 <a id="exit-score"></a>
 ## 出口评分（联网，手动）
 
-面板“出口”页点“检测”（或命令行 `monitor.py ip-score`）时才会联网，不会定时或自动运行。只发两个请求，都走本机当前网络：
+机房 IP、被标记为 VPN／代理的 IP，或位于 Claude 不提供服务地区的 IP，风控风险更高。面板“出口”页点“检测”（或命令行 `monitor.py ip-score`）时查询当前出口，只发两个请求，都走本机当前网络：
 
 1. `https://1.1.1.1/cdn-cgi/trace`：Cloudflare 返回它看到的出口 IP 和接入节点。
 2. `https://ip.net.coffee/api/iprisk/<出口 IP>`：返回该 IP 的信任分、类型（住宅／机房／移动）、所在地、运营商、时区，以及 VPN／代理／Tor／滥用标记。
 
-- **不接触 Claude：**两个请求都不访问 claude.ai 或 anthropic.com。完整的浏览器验收页 https://ip.net.coffee/claude/ 会从浏览器测 claude.ai 的出口 IP、可用性、DNS 与 WebRTC 泄露，属于接触 Claude；面板只用“浏览器打开详情”按钮在你自己的默认浏览器里打开它，由你本人决定是否打开，面板自身不加载这个页面。
+- **不连接 Claude：**两个请求都不访问 claude.ai 或 anthropic.com，检测本身不会在 Claude 那边留下访问。完整检测页 https://ip.net.coffee/claude/ 会从浏览器访问 claude.ai，所以面板只在你自己的浏览器里打开它。
 - **评分规则与页面一致：**95 分以上“极度纯净”，80 以上“纯净”，50 以上“良好”，25 以上“中性”，更低为“可疑”；出口在中国大陆、香港、澳门、俄罗斯、朝鲜、伊朗、叙利亚、古巴、白俄罗斯、委内瑞拉时记 0 分（不可访问）。面板颜色：80 分以上绿色，50–79 橙色，其余红色。出口为 IPv6 时单独提示。
 - **发出了什么：**出口 IP 会以完整形式发给 ip.net.coffee（写在请求路径里），Cloudflare 会看到你的连接。面板、日志和命令行输出只显示前两段（如 `203.0.*.*`），结果只留在内存里，不写入历史文件。
 - **与浏览器页的差别：**这里评的是 Cloudflare 看到的出口。若代理规则让 claude.ai 走另一个节点，Claude 看到的出口可能不同；以浏览器打开的详情页为准。
@@ -189,15 +187,12 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 
 ## 不做的事
 
-- 默认不创建开机自启、Windows 服务或计划任务。只有用户显式执行 `autostart-enable`（或在面板左侧栏勾选「开机自启」）时，才在当前用户 Startup 目录创建一个 CCGuard 快捷方式，可用 `autostart-disable` 撤销。
-- 除用户主动执行的 `register-notifier`（当前用户开始菜单里的一个 CCGuard 快捷方式，可用 `unregister-notifier` 撤销）和 `autostart-enable` 外，不写开始菜单、Startup 或注册表。
-- 不自动联网：出口评分只在用户点击时运行；不做延迟测速、DNS 泄露或 WebRTC 测试（这些在浏览器验收页里由用户本人打开）。
-- 不自动重启核心、不改防火墙、不关闭或启用规则。
-- 不读取或回显 `proxies`、`proxy-groups`、订阅链接与凭据。
-- 不在 macOS/Linux 上冒充已支持。
+- 不改防火墙、路由和代理配置，不重启代理核心；修复按卡片里的步骤由你操作。
+- 不读取代理节点、订阅链接与凭据。
+- 只在你开启时写开机自启（当前用户 Startup 里一个快捷方式）和通知署名用的开始菜单入口，都可撤销。
 
-## 验证与已知限制
+## 已知限制
 
-- 单元测试覆盖配置校验、客户端预设、TUN 自动识别、Clash／sing-box／Xray 解析、状态机、通知冷却、输出脱敏与 HTTP 鉴权；页面逻辑用 Node 合成测试，不启动浏览器。新增覆盖 `quickstart`、`autostart-*`、`--start-hidden`、字体回退、ttk 控件接线、双击启动路径解析与 Windows 单实例互斥量。
-- 真机验收：FlClash 上启动面板核对 10 项与实际一致；关闭代理核心后 5–10 秒内出现告警；恢复后收到恢复提示。本次以合成配置启动面板 6 秒无异常；开机自启的快捷方式参数用记录型 runner 验证，真实登录与不同 Windows 版本未逐项验收（not_run）。
-- 已知限制：托盘依赖 PowerShell 与 WinForms；通知可能被系统专注助手抑制；`unknown` 不等于正常；客户端升级可能改变进程名、TUN 名称或配置键名，自动识别不到时用 `process_names`、`tun_match`、`config_format` 显式指定；开机自启依赖程序目录和配置路径不变，移动后需要重新开启。
+- 托盘依赖 PowerShell 与 WinForms；通知可能被系统专注助手抑制，以面板显示为准。
+- 客户端升级可能改变进程名、TUN 名称或配置键名；自动识别不到时用 `process_names`、`tun_match`、`config_format` 显式指定。
+- 开机自启依赖程序目录和配置路径不变，移动后重新开启。

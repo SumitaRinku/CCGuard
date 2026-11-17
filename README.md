@@ -4,7 +4,7 @@
 
 # CCGuard
 
-**Windows 本机只读监测面板：代理、TUN、路由、防火墙、DNS 与 IPv6，一眼看清。**
+**降低 Claude 风控风险：盯住代理、TUN、路由、防火墙、DNS 与 IPv6，防护一失效就提醒。**
 
 <p>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square">
@@ -20,11 +20,11 @@
 
 ## CCGuard 是什么
 
-CCGuard 面向已经部署好代理、TUN 和防火墙的 Windows 电脑，持续回答一个问题：**现在这台机器上的防护还在不在？**
+Claude 会根据访问来源做风控。出口 IP 中途变化、真实 IP 或 DNS 从代理旁边漏出去、网页走 IPv6 绕过代理，都会让账号看起来同时来自不同地方，是触发风控的常见原因。
 
-它把状态拆成 10 项检查，用绿、橙、红、灰显示在窗口和托盘里；关键项失效时用系统通知提醒。监测本身不修改防火墙、不重启代理、不改配置，10 项检查也不发起出站请求，适合长期开着；需要看出口 IP 质量时，再手动点一次出口评分。
+CCGuard 盯住 Windows 上让流量始终走同一个代理出口的那些设置：代理核心、TUN、默认路由、防火墙默认阻止、DNS 和 IPv6。任何一项失效，托盘图标变色并弹出通知，点开就能看到原因和修复步骤。出口评分则告诉你当前出口 IP 本身是否干净。
 
-> 监测通过只说明本机状态与配置符合预期，不代表出口 IP、DNS、账号或平台验收通过，也不承诺免封。
+CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本机，可以一直开着。
 
 ## 主要能力
 
@@ -38,7 +38,7 @@ CCGuard 面向已经部署好代理、TUN 和防火墙的 Windows 电脑，持�
 | **状态历史** | 每项检查最近 24 小时／7 天的状态时间线，未运行监测的时段单独标出；记录存在配置旁的 `history.jsonl`，只含检查项和状态，保留 7 天 |
 | **处理指引** | 点开任一检查卡片，查看它检查什么、当前结果对应的处理步骤、这一项最近 24 小时的变化和结果代码 |
 | **检测日志** | 每项检查都记下读了哪条系统查询、看到了什么、为什么判成这个状态，在卡片详情的“检测过程”里逐条列出；不含 IP 和文件路径。原理见 [检测原理](docs/monitor.md#principles) |
-| **出口评分** | “出口”页手动检测：经当前网络向 Cloudflare 取出口 IP，再从 [ip.net.coffee](https://ip.net.coffee/claude/) 取信任分、IP 类型、地区、运营商和风险标记，并列出每一步请求；可一键在浏览器打开完整详情。不访问 Claude，见 [出口评分](docs/monitor.md#exit-score) |
+| **出口评分** | “出口”页一键查看当前出口 IP 的信任分、类型（住宅／机房）、地区、运营商和 VPN／代理／滥用标记，数据来自 [ip.net.coffee](https://ip.net.coffee/claude/)；可在浏览器打开完整检测页。检测过程不连接 Claude，见 [出口评分](docs/monitor.md#exit-score) |
 | **窗口 + 托盘 + 网页** | WebView 面板（默认）／tkinter 面板（回退）、托盘通知、`127.0.0.1` 本地网页备选 |
 | **系统通知** | 状态跃迁时提醒，带冷却与恢复提示；可暂停 |
 | **可选开机自启** | 当前用户 Startup 快捷方式，登录后隐藏到托盘；默认关闭，可随时撤销 |
@@ -47,15 +47,24 @@ CCGuard 面向已经部署好代理、TUN 和防火墙的 Windows 电脑，持�
 | **多配置格式** | Clash/Mihomo YAML、sing-box JSON（含 1.11+ `address`）、Xray JSON；读不出记 `unknown` |
 | **候选识别** | `monitor.py detect` 无配置列出候选核心、TUN 网卡和可能的客户端预设 |
 
-## 安全边界
+## 每项检查防的是什么
 
-- **只读**：不调用 `Set-*`，不改防火墙、路由、代理配置，不重启核心。
-- **监测不出站**：10 项检查只读本机，不发起联网请求，不做 DNS 泄露、延迟或 WebRTC 测试；网页模式只监听 `127.0.0.1`。
-- **出口评分只在你点击时联网**：只请求 `1.1.1.1/cdn-cgi/trace` 和 `ip.net.coffee/api/iprisk`，不访问 claude.ai 或 anthropic.com；出口 IP 会发给 ip.net.coffee，界面只显示前两段。完整验收页由你在自己的浏览器里打开。
-- **不要求管理员**：监测以普通用户运行；提权只属于其他防护脚本。
-- **默认不常驻、不自启**：不建 Windows 服务或计划任务，默认不写 Startup。只有你显式开启「开机自启」时，才在当前用户 Startup 目录创建一个 CCGuard 快捷方式，可随时用 `autostart-disable` 或在面板左侧栏关闭。
-- **不碰凭据**：通知和状态只含状态枚举与检查项名称，不含 IP、路径、节点、订阅链接或配置值。
-- **`unknown` 不等于正常**：查询失败、权限不足、格式不支持或配置留空一律显示未知，不推测为通过。
+| 检查 | 失效时的风险 |
+| --- | --- |
+| 代理核心 | 代理停了，流量直接用本地网络和真实 IP 出去 |
+| TUN 网卡 | 不经系统代理的程序直接用真实 IP 连接 |
+| 默认路由 | 默认路由没走 TUN，流量绕过代理 |
+| 防火墙默认阻止 | 代理断开或重连的那一刻，流量直接出网 |
+| 放行规则 | 防火墙挡住代理核心自己，网络断掉 |
+| 核心 IPv6 | 代理开了 IPv6，可能出现第二个出口地址 |
+| 严格路由 | 其他网卡或 VPN 抢走流量 |
+| DNS 接管 | DNS 查询不经代理，暴露本地运营商 |
+| 网卡 DNS | 网卡 DNS 被改回运营商 DNS |
+| 系统 IPv6 | 网页走 IPv6 直连，绕过只代理 IPv4 的出口 |
+
+出口评分补上最后一环：出口 IP 是机房 IP、被标记为 VPN／代理，或位于 Claude 不提供服务的地区时，即使本机设置全部正常，风控风险也更高。
+
+**CCGuard 本身**：只读本机，不改防火墙、路由和代理配置，不需要管理员；监测不联网，出口评分和检查更新只在你点击时联网，都不连接 Claude；状态、日志和通知不含 IP 地址与文件路径；默认不开机自启。
 
 ## 快速开始
 
@@ -125,7 +134,6 @@ python ...\monitor.py detect
 - `proxy.runtime_config`：客户端实际加载的配置绝对路径；留空时自动查找 FlClash、Clash Verge Rev 的默认位置
 - `firewall.allow_rule_prefix`、`network.expect_dns_servers`：按你的部署填写
 
-不要把订阅、节点、密码或令牌写进去；配置里没有这些字段。
 
 ### 6. 启动、自启与关闭
 
@@ -350,7 +358,6 @@ python -m pip install -r requirements-build.txt && python tools/build_windows.py
 
 - **出口评分**的信任分、IP 类型、地区、运营商与风险标记来自 [ip.net.coffee](https://ip.net.coffee/claude/) 的公开接口，评分分段和受限地区规则与其 Claude IP 检测页一致；完整检测页（含 Claude 出口 IP、DNS 与 WebRTC 泄露）请在浏览器里打开该网站查看。
 - **出口 IP** 由 Cloudflare 的 `1.1.1.1/cdn-cgi/trace` 返回。
-- 两项服务都由第三方提供，CCGuard 只在你点击“检测”时请求它们；服务调整时出口评分会显示“检测失败”，不影响本机监测。
 - 安装版界面字体为思源黑体（[Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)，Adobe 与 Google 发布，SIL Open Font License 1.1），构建时从 [google/fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc) 的固定提交下载并校验哈希，许可文本随程序附带（安装目录 `_internal\ccguard\assets\monitor\fonts\OFL.txt`）。
 - 安装向导的简体中文翻译来自 Inno Setup 官方仓库收录的社区翻译（[jrsoftware/issrc](https://github.com/jrsoftware/issrc) 的 `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Kira），原样保留其署名。
 

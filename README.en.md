@@ -4,7 +4,7 @@
 
 # CCGuard
 
-**A read-only Windows monitor for proxy, TUN, routing, firewall, DNS and IPv6, at a glance.**
+**Lower the risk of Claude risk control: CCGuard watches proxy, TUN, routing, firewall, DNS and IPv6 and alerts you the moment protection breaks.**
 
 <p>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square">
@@ -20,11 +20,11 @@
 
 ## What CCGuard is
 
-CCGuard is for Windows machines that already run a proxy with TUN and a firewall setup, and keeps answering one question: **is the protection on this machine still in place?**
+Claude applies risk control based on where traffic comes from. An exit IP that changes mid-session, a real IP or DNS lookup leaking around the proxy, or web traffic going out over IPv6 past the proxy all make an account look like it is in several places at once, and are common triggers.
 
-It splits the state into 10 checks shown in green, orange, red or grey in a window and a tray icon, and raises a system notification when a key check fails. It does not change the firewall, restart the proxy or edit the configuration, and the 10 checks make no outbound request, so it is safe to leave running; when you want to know how clean the exit IP is, run the exit score by hand.
+CCGuard watches the settings on a Windows machine that keep all traffic on one proxy exit: the proxy core, TUN, default route, default-block firewall, DNS and IPv6. When any of them breaks, the tray icon changes colour and a notification appears; open the card to see why and how to fix it. The exit score tells you whether the exit IP itself is clean.
 
-> Passing checks mean the local state and configuration match expectations; they do not prove the exit IP, DNS, account or platform are fine, and nothing here promises an account will not be banned.
+CCGuard never contacts Claude and does not change system settings: the 10 checks only read the local machine, so it can stay running.
 
 ## What it does
 
@@ -38,7 +38,7 @@ It splits the state into 10 checks shown in green, orange, red or grey in a wind
 | **State history** | 24-hour / 7-day timeline per check, with unmonitored time shown separately; stored in `history.jsonl` next to the config, check ids and states only, kept for 7 days |
 | **Fix guidance** | Click any check card to see what it checks, the steps for the current result, its last 24 hours and the result code |
 | **Detection log** | Every check records which system query it read, what it saw and why it reached its state; listed under "检测过程" in the card detail, without IP addresses or file paths. See [how checks work](docs/monitor.md#principles) |
-| **Exit score** | On the "出口" page, on demand: ask Cloudflare for the exit IP over the current network, then fetch its trust score, IP type, location, network and risk flags from [ip.net.coffee](https://ip.net.coffee/claude/), with every request listed; open the full report in your browser with one click. Never contacts Claude; see [exit score](docs/monitor.md#exit-score) |
+| **Exit score** | On the "出口" page, see the current exit IP's trust score, type (residential / datacenter), location, network and VPN / proxy / abuse flags, from [ip.net.coffee](https://ip.net.coffee/claude/); open the full check page in your browser. The check never contacts Claude; see [exit score](docs/monitor.md#exit-score) |
 | **Window + tray + web** | WebView panel (default) / tkinter panel (fallback), tray notifications, local `127.0.0.1` web page as an alternative |
 | **System notifications** | Alerts on state transitions with cooldown and recovery notices; can be paused |
 | **Optional autostart** | A per-user Startup shortcut opens the panel hidden in the tray at login; off by default |
@@ -47,15 +47,24 @@ It splits the state into 10 checks shown in green, orange, red or grey in a wind
 | **Multiple config formats** | Clash/Mihomo YAML, sing-box JSON (including 1.11+ `address`), Xray JSON; unreadable fields stay `unknown` |
 | **Candidate detection** | `monitor.py detect` lists candidate cores, TUN adapters and client presets without a config |
 
-## Safety boundaries
+## What each check protects against
 
-- **Read-only**: no `Set-*`, no firewall/route/proxy changes, no core restart.
-- **Monitoring makes no outbound traffic**: the 10 checks only read the local machine; no DNS-leak, latency or WebRTC probes; the web mode only listens on `127.0.0.1`.
-- **The exit score goes online only when you click it**: it requests `1.1.1.1/cdn-cgi/trace` and `ip.net.coffee/api/iprisk` only, never claude.ai or anthropic.com; the exit IP is sent to ip.net.coffee and the UI shows only its first two parts. You open the full acceptance page in your own browser.
-- **No admin rights**: the monitor runs as a normal user; elevation belongs to other protection scripts.
-- **No autostart by default**: no Windows service or scheduled task, and no Startup entry unless you explicitly enable autostart. Enabling creates one CCGuard shortcut in the current user's Startup folder and can be undone at any time.
-- **No credentials**: notifications and state contain only state names and check IDs, never IPs, paths, nodes, subscription links or config values.
-- **`unknown` is not a pass**: failed queries, missing permissions, unsupported formats or an empty config stay unknown.
+| Check | Risk when it fails |
+| --- | --- |
+| Proxy core | The proxy stopped; traffic goes out on the local network with the real IP |
+| TUN adapter | Programs that ignore the system proxy connect with the real IP |
+| Default route | The default route bypasses TUN, so traffic skips the proxy |
+| Firewall default block | While the proxy disconnects or reconnects, traffic goes straight out |
+| Allow rules | The firewall blocks the proxy core itself and the network drops |
+| Core IPv6 | The proxy uses IPv6 and a second exit address can appear |
+| Strict route | Another adapter or VPN takes over traffic |
+| DNS hijack | DNS lookups skip the proxy and reveal the local ISP |
+| Adapter DNS | The adapter DNS has been reset to the ISP's servers |
+| System IPv6 | Web traffic goes out over IPv6 directly, past an IPv4-only exit |
+
+The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / proxy, or one in a region Claude does not serve carries more risk even when every local setting is correct.
+
+**CCGuard itself**: reads the local machine only, never changes firewall, routes or proxy config, needs no admin rights; monitoring stays offline, and the exit score and update check go online only when you click them, never contacting Claude; state, logs and notifications contain no IP addresses or file paths; autostart is off by default.
 
 ## Quick start
 
@@ -125,7 +134,6 @@ Then copy `assets\monitor\config.example.json` to a private directory outside th
 - `proxy.runtime_config`: the absolute path of the config the client actually loads; when empty, the default places of FlClash and Clash Verge Rev are searched
 - `firewall.allow_rule_prefix`, `network.expect_dns_servers`: match your deployment
 
-Never put subscriptions, nodes, passwords or tokens in the file; the schema has no such fields.
 
 ### 6. Start, autostart and close
 
@@ -350,7 +358,6 @@ Report problems through [Issues](https://github.com/SumitaRinku/CCGuard/issues).
 
 - The **exit score**'s trust score, IP type, location, network and risk flags come from the public API of [ip.net.coffee](https://ip.net.coffee/claude/); the score bands and restricted-region rule follow its Claude IP check page. Open that site in your browser for the full check (Claude exit IP, DNS and WebRTC leaks).
 - The **exit IP** comes from Cloudflare's `1.1.1.1/cdn-cgi/trace`.
-- Both are third-party services that CCGuard only contacts when you click "检测"; if they change, the exit score shows "检测失败" and local monitoring is unaffected.
 - The installed app's UI font is [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) (Adobe and Google, SIL Open Font License 1.1), downloaded at build time from a fixed commit of [google/fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc) with its hash checked; the license text ships with the app (`_internal\ccguard\assets\monitor\fonts\OFL.txt` in the install folder).
 - The installer wizard's Simplified Chinese translation is the community translation carried in the official Inno Setup repository ([jrsoftware/issrc](https://github.com/jrsoftware/issrc), `Files/Languages/Unofficial/ChineseSimplified.isl`, maintained by Kira), kept with its credits.
 
