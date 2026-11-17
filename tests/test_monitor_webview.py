@@ -9,8 +9,8 @@ import types
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
-ASSETS = ROOT / 'skills/claude-guardian/assets/monitor'
+SCRIPTS = ROOT / 'scripts'
+ASSETS = ROOT / 'assets/monitor'
 sys.path.insert(0, str(SCRIPTS))
 
 web = importlib.import_module('monitor_webview')
@@ -364,7 +364,7 @@ class AboutAndUpdate(Base):
     def test_only_this_repositorys_release_pages_open(self):
         opened = []
         self.api._open_url = lambda url: opened.append(url) or True
-        page = 'https://github.com/SumitaRinku/CCguard/releases'
+        page = 'https://github.com/SumitaRinku/CCGuard/releases'
         self.assertTrue(self.api.open_release()['ok'])
         self.assertTrue(self.api.open_release(page + '/download/v1.0.0/CCGuard-Setup-1.0.0.exe')['ok'])
         self.assertFalse(self.api.open_release('https://evil.example/setup.exe')['ok'])

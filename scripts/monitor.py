@@ -7,7 +7,6 @@ from pathlib import Path
 import platform
 import re
 import secrets
-import shlex
 import shutil
 import subprocess
 import sys
@@ -17,9 +16,9 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Frozen (the CCGuard.exe build): resources live under the bundle's claude-guardian/ folder.
+# Frozen (the CCGuard.exe build): resources live under the bundle's ccguard/ folder.
 FROZEN = bool(getattr(sys, 'frozen', False))
-ROOT = (Path(getattr(sys, '_MEIPASS', '.')) / 'claude-guardian') if FROZEN else Path(__file__).resolve().parent.parent
+ROOT = (Path(getattr(sys, '_MEIPASS', '.')) / 'ccguard') if FROZEN else Path(__file__).resolve().parent.parent
 ASSETS = ROOT / 'assets/monitor'
 ICON = ROOT / 'assets/monitor/icon-ok.ico'
 ICON_DIR = ROOT / 'assets/monitor'
@@ -1129,6 +1128,8 @@ def quickstart_config(path=None, client='auto', runtime_config='', providers=Non
 
 
 def desktop(config_path, output, idle_minutes=0):
+    if platform.system() != 'Windows':
+        raise MonitorError('桌面入口只支持 Windows。')
     output = Path(output)
     if output.exists():
         raise MonitorError('输出目录已存在，请换一个新目录。')
@@ -1143,29 +1144,8 @@ def desktop(config_path, output, idle_minutes=0):
                    '$s.TargetPath=' + _ps_quote(target) + ';$s.Arguments=' + _ps_quote(subprocess.list2cmdline(argv[1:])) +
                    ';$s.IconLocation=' + _ps_quote(icon) + ';$s.Save()')
         subprocess.run(['powershell.exe', '-NoProfile', '-Command', command], check=True, timeout=30)
-    elif system == 'Darwin':
-        import plistlib
-        contents = output / (APP_NAME + '.app/Contents')
-        (contents / 'MacOS').mkdir(parents=True)
-        (contents / 'Resources').mkdir()
-        launcher = contents / 'MacOS/guardian-monitor'
-        launcher.write_text('#!/bin/sh\nexec ' + shlex.join(argv) + '\n', encoding='utf-8')
-        launcher.chmod(0o755)
-        shutil.copyfile(ROOT / 'assets/killswitch/icon.icns', contents / 'Resources/guardian.icns')
-        with (contents / 'Info.plist').open('wb') as out:
-            plistlib.dump({'CFBundleName': APP_NAME, 'CFBundleDisplayName': APP_NAME,
-                           'CFBundleIdentifier': 'org.claude-guardian.ccguard', 'CFBundlePackageType': 'APPL',
-                           'CFBundleExecutable': 'guardian-monitor', 'CFBundleIconFile': 'guardian.icns'}, out)
     else:
-        icon = output / 'guardian.png'
-        shutil.copyfile(ROOT / 'assets/killswitch/icon.png', icon)
-        def quote(value):
-            return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('%', '%%') + '"'
-        launcher = output / 'guardian-monitor.desktop'
-        launcher.write_text('[Desktop Entry]\nType=Application\nName=' + APP_NAME + '\nComment=本机防护实时监测\nExec=' +
-                            ' '.join(quote(a) for a in argv) + '\nIcon=' + str(icon) + '\nTerminal=false\nCategories=Network;\n',
-                            encoding='utf-8')
-        launcher.chmod(0o755)
+        raise MonitorError('桌面入口只支持 Windows。')
 
 
 def serve(cfg, state_dir, tray=False, open_browser=True, idle_minutes=15):

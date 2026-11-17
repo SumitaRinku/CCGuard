@@ -56,8 +56,8 @@ def parse_version(text):
 
 
 def source_version():
-    """__version__ from skills/claude-guardian/scripts/version.py, read without importing."""
-    text = (ROOT / 'skills' / 'claude-guardian' / 'scripts' / 'version.py').read_text(encoding='utf-8')
+    """__version__ from scripts/version.py, read without importing."""
+    text = (ROOT / 'scripts' / 'version.py').read_text(encoding='utf-8')
     match = re.search(r"^__version__ = '([^']+)'$", text, re.M)
     if not match:
         raise BuildError('version.py 里没有 __version__')

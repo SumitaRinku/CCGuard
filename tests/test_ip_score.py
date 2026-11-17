@@ -8,7 +8,7 @@ import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
+SCRIPTS = ROOT / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 
 score = importlib.import_module('ip_score')

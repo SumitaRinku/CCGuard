@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
+SCRIPTS = ROOT / 'scripts'
 
 
 def load(name):
@@ -728,7 +728,7 @@ class Notifier(unittest.TestCase):
                 m.register_notifier(self.config_path, runner=RecordingRunner({}), path=self.lnk)
 
     def test_names_match_between_python_tray_and_helper(self):
-        tray = (ROOT / 'skills/claude-guardian/assets/monitor/tray.ps1').read_text(encoding='utf-8-sig')
+        tray = (ROOT / 'assets/monitor/tray.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("$AppName = '" + m.APP_NAME + "'", tray)
         self.assertIn("$AppId = '" + m.APP_ID + "'", tray)
         # APPDATA exists only on Windows; supply one so the path logic is checked on every platform.
@@ -783,6 +783,15 @@ class Launcher(unittest.TestCase):
         self.assertEqual(argv[argv.index('--idle-minutes') + 1], '0')
         self.assertEqual(argv[argv.index('--config') + 1], str(config_path))
         self.assertEqual(m.launcher_argv(config_path, 30)[-1], '30')
+
+    def test_desktop_entry_is_windows_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'entry'
+            for system in ('Darwin', 'Linux'):
+                with patch.object(m.platform, 'system', return_value=system):
+                    with self.assertRaises(m.MonitorError):
+                        m.desktop(Path(folder) / 'monitor.json', target)
+            self.assertFalse(target.exists())
 
     def test_hidden_launcher_adds_start_hidden(self):
         self.assertNotIn('--start-hidden', m.launcher_argv(Path('x'), 0))

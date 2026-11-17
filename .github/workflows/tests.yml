@@ -1,0 +1,32 @@
+name: Tests
+# CCGuard is Windows-only; Linux runs the platform-independent logic, Windows runs everything.
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12']
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit and regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Page logic (Node, no browser)
+        run: |
+          node tests/monitor-panel.cjs
+          node tests/monitor-interaction.cjs
+      - name: Compile
+        run: python -m compileall -q scripts packaging tools

@@ -83,7 +83,7 @@ function bind() {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     for (const event of events) {
       try {
-        new Notification('Claude-Guardian', { body: alertText(event), tag: 'guardian-' + event.id, silent: false });
+        new Notification('CCGuard', { body: alertText(event), tag: 'guardian-' + event.id, silent: false });
       } catch (_) { /* 通知失败不影响监测 */ }
     }
   }

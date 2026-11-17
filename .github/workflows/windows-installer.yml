@@ -12,8 +12,8 @@ on:
       - 'packaging/**'
       - 'tools/build_windows.py'
       - 'requirements-build.txt'
-      - 'skills/claude-guardian/scripts/**'
-      - 'skills/claude-guardian/assets/monitor/**'
+      - 'scripts/**'
+      - 'assets/**'
       - '.github/workflows/windows-installer.yml'
 permissions:
   contents: read

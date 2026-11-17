@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.ico binary
+*.png binary
+# Third-party Inno Setup translation kept byte for byte (see packaging/ccguard.iss).
+packaging/languages/*.isl -text

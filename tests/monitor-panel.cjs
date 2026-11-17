@@ -1,7 +1,7 @@
 'use strict';
 // Pure logic checks for the WebView desktop panel; no browser and no DOM.
 const assert = require('node:assert/strict');
-const panel = require('../skills/claude-guardian/assets/monitor/panel.js');
+const panel = require('../assets/monitor/panel.js');
 
 assert.equal(panel.stateClass('fail'), 'fail');
 assert.equal(panel.stateClass('weird'), 'unknown');
@@ -39,12 +39,12 @@ assert.equal(panel.updateView(null).download, null);
 assert.match(panel.updateView({ok: false, error: 'offline'}).text, /检查失败：offline/);
 assert.deepEqual(panel.updateView({ok: true, update: false}), {text: '已是最新版本', download: null});
 const uv = panel.updateView({ok: true, update: true, releases: [{version: '0.7.0', date: '2026-12-01',
-  installer_url: 'https://github.com/SumitaRinku/CCguard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe',
-  page_url: 'https://github.com/SumitaRinku/CCguard/releases/tag/v0.7.0'}]});
+  installer_url: 'https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe',
+  page_url: 'https://github.com/SumitaRinku/CCGuard/releases/tag/v0.7.0'}]});
 assert.equal(uv.text, '有新版本 0.7.0（2026-12-01 发布）');
 assert.match(uv.download, /CCGuard-Setup-0\.7\.0\.exe$/);
 assert.match(panel.updateView({ok: true, update: true, releases: [{version: '0.7.0', date: '', installer_url: null,
-  page_url: 'https://github.com/SumitaRinku/CCguard/releases/tag/v0.7.0'}]}).download, /tag\/v0\.7\.0$/);
+  page_url: 'https://github.com/SumitaRinku/CCGuard/releases/tag/v0.7.0'}]}).download, /tag\/v0\.7\.0$/);
 
 assert.equal(panel.logLine({time: '12:00:00', kind: '状态', text: 'x'}), '12:00:00  [状态]  x');
 assert.deepEqual(Array.from(panel.base64ToBytes(Buffer.from([0, 1, 254, 255]).toString('base64'))), [0, 1, 254, 255]);

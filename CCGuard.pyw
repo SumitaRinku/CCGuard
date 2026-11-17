@@ -9,9 +9,7 @@ def locate_scripts(base=None):
     """Find monitor.py in the repository layout or the extracted release package."""
     here = Path(base) if base is not None else Path(__file__).resolve().parent
     candidates = (
-        here / 'skills' / 'claude-guardian' / 'scripts',
         here / 'scripts',
-        here / 'claude-guardian' / 'scripts',
     )
     for candidate in candidates:
         if (candidate / 'monitor.py').is_file():

@@ -152,7 +152,7 @@ def event_text(event):
     return label + ' → ' + STATE_TEXT.get(event['to'], event['to']) + '（原 ' + STATE_TEXT.get(event['from'], event['from']) + '）'
 
 
-FONT_DIRS = (engine.ROOT.parent.parent / 'fonts', engine.ROOT / 'assets/monitor/fonts')
+FONT_DIRS = (engine.ROOT / 'fonts', engine.ROOT / 'assets/monitor/fonts')
 # Almost every string in the panel is Chinese, so body text needs a family with full CJK
 # coverage: a Latin-only face makes Tk fall back glyph by glyph and mixes two typefaces with
 # different baselines in one label. Best first; a family wins if the user dropped it into fonts/

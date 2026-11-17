@@ -1,9 +1,8 @@
 """Manual update check for CCGuard: run only when the user clicks.
 
-One request: https://api.github.com/repos/SumitaRinku/CCguard/releases (the public release list).
+One request: https://api.github.com/repos/SumitaRinku/CCGuard/releases (the public release list).
 Nothing is downloaded or installed; newer versions and their notes are shown and the release page
 opens in the user's own browser. Contacts only GitHub, never Claude or Anthropic.
-(scripts/update_check.py is a different tool: it compares the Skill files with upstream.)
 """
 import json
 from pathlib import Path
@@ -14,7 +13,7 @@ import urllib.request
 
 from version import __version__
 
-REPO = 'SumitaRinku/CCguard'
+REPO = 'SumitaRinku/CCGuard'
 RELEASES_API = 'https://api.github.com/repos/%s/releases?per_page=20' % REPO
 RELEASES_PAGE = 'https://github.com/%s/releases' % REPO
 TIMEOUT = 10

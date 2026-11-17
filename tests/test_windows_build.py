@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
+SCRIPTS = ROOT / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 
 
@@ -91,20 +91,20 @@ class BundledFont(unittest.TestCase):
                     build.fetch_fonts(get=lambda url: b'tampered')
 
     def test_spec_bundles_the_font_and_refuses_a_build_without_it(self):
-        self.assertIn("(str(FONT_DIR), 'claude-guardian/assets/monitor/fonts')", SPEC)
+        self.assertIn("(str(FONT_DIR), 'ccguard/assets/monitor/fonts')", SPEC)
         self.assertIn("raise SystemExit", SPEC)
         source = (ROOT / 'packaging/ccguard_app.py').read_text(encoding='utf-8')
         self.assertIn("'fonts/NotoSansSC-VF.ttf', 'fonts/OFL.txt'", source)
 
     def test_page_prefers_the_bundled_face(self):
-        css = (ROOT / 'skills/claude-guardian/assets/monitor/panel.css').read_text(encoding='utf-8')
+        css = (ROOT / 'assets/monitor/panel.css').read_text(encoding='utf-8')
         self.assertIn('src: url("fonts/NotoSansSC-VF.ttf")', css)
         stack = css.split('--font-ui:', 1)[1].split(';', 1)[0]
         self.assertTrue(stack.strip().startswith('"CCGuard Sans"'))
 
     def test_font_is_never_committed(self):
         ignored = (ROOT / '.gitignore').read_text(encoding='utf-8').splitlines()
-        self.assertIn('/skills/claude-guardian/assets/monitor/fonts/', ignored)
+        self.assertIn('/assets/monitor/fonts/', ignored)
 
 
 class InstallerAgreesWithTheApp(unittest.TestCase):
@@ -146,7 +146,7 @@ class InstallerAgreesWithTheApp(unittest.TestCase):
 
 class Bundle(unittest.TestCase):
     def test_spec_bundles_assets_where_monitor_looks_when_frozen(self):
-        self.assertIn("'claude-guardian/assets/monitor'", SPEC)
+        self.assertIn("'ccguard/assets/monitor'", SPEC)
         self.assertIn('console=False', SPEC)
 
     def test_every_lazily_imported_module_is_named(self):
@@ -165,7 +165,7 @@ class Bundle(unittest.TestCase):
 
     def test_monitor_resolves_frozen_root_from_the_bundle(self):
         source = (SCRIPTS / 'monitor.py').read_text(encoding='utf-8')
-        self.assertIn("Path(getattr(sys, '_MEIPASS', '.')) / 'claude-guardian'", source)
+        self.assertIn("Path(getattr(sys, '_MEIPASS', '.')) / 'ccguard'", source)
 
 
 class Entry(unittest.TestCase):

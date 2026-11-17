@@ -7,8 +7,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
-ASSETS = ROOT / 'skills/claude-guardian/assets/monitor'
+SCRIPTS = ROOT / 'scripts'
+ASSETS = ROOT / 'assets/monitor'
 sys.path.insert(0, str(SCRIPTS))
 
 gui = importlib.import_module('monitor_gui')

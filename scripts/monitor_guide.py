@@ -41,7 +41,7 @@ STEPS = {
         '在“Windows 安全中心 → 防火墙和网络保护”里，把域、专用、公用网络的防火墙全部打开。',
     ],
     'DEFAULT_OUTBOUND_ALLOW': [
-        '用断网保护开关重新开启防护：`killswitch.py on --config <开关配置>`，需要管理员权限。',
+        '用部署断网保护时的工具重新开启默认出站阻止，需要管理员权限。',
     ],
     'GUARDIAN_RULES_MISSING': [
         '重新开启断网保护会恢复放行规则。',

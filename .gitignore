@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.log
+
+# Windows exe / installer build output (tools/build_windows.py)
+/build/
+/dist/
+
+# Bundled font is fetched at build time (tools/build_windows.py), never committed.
+/assets/monitor/fonts/
+# Optional user-supplied fonts for local use (see docs/monitor.md).
+/fonts/

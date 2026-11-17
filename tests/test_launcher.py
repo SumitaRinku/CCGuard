@@ -21,7 +21,7 @@ launcher = load('ccguard_launcher', ROOT / 'CCGuard.pyw')
 
 class Launcher(unittest.TestCase):
     def test_repository_layout_resolves(self):
-        self.assertEqual(launcher.locate_scripts(), ROOT / 'skills' / 'claude-guardian' / 'scripts')
+        self.assertEqual(launcher.locate_scripts(), ROOT / 'scripts')
 
     def test_release_package_layout_resolves(self):
         with tempfile.TemporaryDirectory() as folder:

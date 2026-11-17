@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'skills/claude-guardian/scripts'))
+sys.path.insert(0, str(ROOT / 'scripts'))
 
 history = importlib.import_module('monitor_history')
 guide = importlib.import_module('monitor_guide')
@@ -130,7 +130,7 @@ class Guide(unittest.TestCase):
         self.assertEqual(set(guide.PRIMARY), set(engine.CHECK_IDS))
 
     def test_every_failure_code_the_engine_emits_has_steps(self):
-        source = (ROOT / 'skills/claude-guardian/scripts/monitor.py').read_text(encoding='utf-8')
+        source = (ROOT / 'scripts/monitor.py').read_text(encoding='utf-8')
         import re
         emitted = set(re.findall(r"add\('\w+', '(?:fail|degraded)', '([A-Z0-9_]+)'", source))
         self.assertGreaterEqual(len(emitted), 12)

@@ -9,14 +9,14 @@ import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'skills/claude-guardian/scripts'
+SCRIPTS = ROOT / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 
 update = importlib.import_module('app_update')
 version = importlib.import_module('version')
 monitor = importlib.import_module('monitor')
 
-PAGE = 'https://github.com/SumitaRinku/CCguard/releases'
+PAGE = 'https://github.com/SumitaRinku/CCGuard/releases'
 
 
 def release(tag, **extra):
@@ -24,7 +24,7 @@ def release(tag, **extra):
             'html_url': PAGE + '/tag/' + tag, 'body': '## 本次更新\n\n- **新功能** `x`\n- 修复 [问题](http://example)\n',
             'assets': [{'name': 'CCGuard-Setup-%s.exe' % tag.lstrip('v'),
                         'browser_download_url': PAGE + '/download/%s/CCGuard-Setup-%s.exe' % (tag, tag.lstrip('v'))},
-                       {'name': 'claude-guardian.zip', 'browser_download_url': PAGE + '/download/x.zip'}]}
+                       {'name': 'ccguard.zip', 'browser_download_url': PAGE + '/download/x.zip'}]}
     item.update(extra)
     return item
 
@@ -61,9 +61,12 @@ class Version(unittest.TestCase):
         self.assertEqual(len(numbers), len(set(numbers)))
 
     def test_update_log_is_shipped(self):
-        package = (ROOT / 'tools/package_skill.py').read_text(encoding='utf-8')
-        for path in ('scripts/app_update.py', 'scripts/version.py', 'assets/monitor/release-notes.json'):
-            self.assertIn('"%s"' % path, package)
+        # The exe bundles the whole assets/monitor folder and names the lazily imported modules.
+        spec = (ROOT / 'packaging/ccguard.spec').read_text(encoding='utf-8')
+        self.assertIn("(str(ASSETS), 'ccguard/assets/monitor')", spec)
+        self.assertTrue((ROOT / 'assets/monitor/release-notes.json').is_file())
+        for name in ("'app_update'", "'version'"):
+            self.assertIn(name, spec)
 
     def test_unreadable_log_is_empty_not_an_error(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -112,7 +115,7 @@ class Check(unittest.TestCase):
         self.assertFalse(update.check(get=fake([]), current='dev')['ok'])
 
     def test_only_github_is_contacted(self):
-        self.assertTrue(update.RELEASES_API.startswith('https://api.github.com/repos/SumitaRinku/CCguard/'))
+        self.assertTrue(update.RELEASES_API.startswith('https://api.github.com/repos/SumitaRinku/CCGuard/'))
         source = (SCRIPTS / 'app_update.py').read_text(encoding='utf-8')
         self.assertNotIn('claude.ai', source)
         self.assertNotIn('anthropic.com', source)
@@ -127,7 +130,7 @@ class Check(unittest.TestCase):
     def test_allowed_url(self):
         self.assertTrue(update.allowed_url(PAGE))
         self.assertTrue(update.allowed_url(PAGE + '/tag/v1.0.0'))
-        for bad in ('https://github.com/SumitaRinku/CCguard', 'https://github.com/SumitaRinku/CCguard/releasesX',
+        for bad in ('https://github.com/SumitaRinku/CCGuard', 'https://github.com/SumitaRinku/CCGuard/releasesX',
                     'https://evil.example/' + PAGE, None, 5):
             self.assertFalse(update.allowed_url(bad), bad)
 

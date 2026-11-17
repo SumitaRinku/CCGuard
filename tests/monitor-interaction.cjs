@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const mon = require('../skills/claude-guardian/assets/monitor/monitor.js');
+const mon = require('../assets/monitor/monitor.js');
 
 assert.deepEqual(mon.decideAlerts(null, {proxy_core: 'fail'}, 0, 1000, {}), []);
 assert.deepEqual(mon.decideAlerts({proxy_core: 'ok'}, {proxy_core: 'ok'}, 0, 1000, {}), []);
@@ -30,7 +30,7 @@ assert.equal(mon.labelOf('unknown_id'), 'unknown_id');
 assert.match(mon.alertText({id: 'strict_route', state: 'degraded', kind: 'problem'}), /严格路由/);
 assert.match(mon.alertText({id: 'strict_route', state: 'ok', kind: 'recovered'}), /已恢复/);
 
-const assets = path.join(__dirname, '../skills/claude-guardian/assets/monitor');
+const assets = path.join(__dirname, '../assets/monitor');
 const html = fs.readFileSync(path.join(assets, 'monitor.html'), 'utf8');
 const css = fs.readFileSync(path.join(assets, 'monitor.css'), 'utf8');
 const js = fs.readFileSync(path.join(assets, 'monitor.js'), 'utf8');
