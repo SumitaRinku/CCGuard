@@ -198,6 +198,46 @@ class Install(unittest.TestCase):
             self.assertIn(flag, script)
 
 
+CHILD = """
+import sys, time
+sys.path.insert(0, sys.argv[1])
+import app_update
+app_update.start_install(sys.argv[2])
+time.sleep(1.5)
+"""
+
+
+class InstallLaunch(unittest.TestCase):
+    def test_waiter_is_hidden_but_not_detached(self):
+        seen = {}
+        update.start_install('setup.exe', wait_pid=7, popen=lambda argv, **kw: seen.update(kw, argv=argv))
+        self.assertEqual(seen['creationflags'] & 0x00000008, 0)      # DETACHED_PROCESS kills PowerShell 5.1
+        if sys.platform == 'win32':
+            self.assertEqual(seen['creationflags'], 0x08000000)       # CREATE_NO_WINDOW
+        self.assertIn('Wait-Process -Id 7', seen['argv'][-1])
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell')
+    def test_installer_starts_after_ccguard_has_exited(self):
+        """Regression for v0.7.0: CCGuard exited, the update never installed."""
+        import subprocess
+        import time
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            fake = folder / "CCGuard-Setup-9.9.9 o'k.cmd"
+            fake.write_bytes(b'@echo %* > "%~dp0ran.txt"\r\n')
+            child = subprocess.run([sys.executable, '-c', CHILD, str(ROOT / 'scripts'), str(fake)], timeout=60)
+            exited = time.time()
+            self.assertEqual(child.returncode, 0)
+            marker = folder / 'ran.txt'
+            deadline = time.time() + 30
+            while not marker.exists() and time.time() < deadline:
+                time.sleep(0.2)
+            self.assertTrue(marker.exists(), 'installer was never started')
+            time.sleep(0.3)
+            self.assertEqual(marker.read_text().split(), ['/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/RELAUNCH'])
+            self.assertGreaterEqual(marker.stat().st_mtime, exited - 1)
+
+
 class Prefs(unittest.TestCase):
     def test_defaults_save_and_due(self):
         with tempfile.TemporaryDirectory() as folder:

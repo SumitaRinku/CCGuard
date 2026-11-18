@@ -198,7 +198,10 @@ def install_command(installer, wait_pid):
 
 
 def start_install(installer, wait_pid=None, popen=subprocess.Popen):
-    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'DETACHED_PROCESS', 0)
+    # CREATE_NO_WINDOW only. With DETACHED_PROCESS, Windows PowerShell gets no console at all and
+    # quits at once without running the script, so the installer never started (v0.7.0/0.7.1 bug).
+    # A no-window child still outlives CCGuard: Windows does not end children when the parent exits.
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
     return popen(install_command(installer, os.getpid() if wait_pid is None else wait_pid), creationflags=flags,
                  close_fds=True)
 

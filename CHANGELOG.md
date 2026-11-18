@@ -2,6 +2,12 @@
 
 每个版本给出主要变化与验证方式；逐次提交的细节见 git 历史。面向用户的简短更新日志在 `assets/monitor/release-notes.json`，面板“关于”页显示。
 
+## 0.7.2（2026-11-18）
+
+- 修复：“关于”页“下载并安装”后 CCGuard 退出，但新版本没有安装、也没有重新打开。安装程序已下载并通过校验，原因在启动等待进程的方式：`DETACHED_PROCESS` 让 Windows PowerShell 拿不到控制台，脚本一行未执行就退出，安装程序从未启动。改为只用 `CREATE_NO_WINDOW`，等待进程仍在 CCGuard 退出后继续运行。
+- 新增 Windows 回归测试：子进程按 CCGuard 的方式启动等待进程后退出，断言安装程序（用记录参数的替身）在其退出后以 `/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH` 启动；旧代码下该测试失败。
+- 0.7.0、0.7.1 里的这段代码有问题，从这两个版本需手动安装一次 0.7.2。
+
 ## 0.7.1（2026-11-18）
 
 - 修复：用 CCGuard 关闭 Claude 后，任务管理器的 Claude 分组里仍剩 `cowork-svc.exe` 和 `Runtime Broker`。前者是 Claude 安装包注册的 Windows 服务 `CoworkVMService`（显示名 Claude，LocalSystem，开机自动启动），后者是带 Claude 包标识的 RuntimeBroker。现在关闭时先结束进程树，再按包标识结束剩下的附属进程，最后 `sc stop` 停止服务；该服务的访问控制允许已登录用户停止，不需要管理员。
