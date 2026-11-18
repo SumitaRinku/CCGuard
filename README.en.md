@@ -78,9 +78,9 @@ The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / pr
 
 ### 2. Install
 
-**Installer (recommended)**: download [`CCGuard-Setup-0.7.3.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.3/CCGuard-Setup-0.7.3.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
+**Installer (recommended)**: download [`CCGuard-Setup-0.7.4.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.4/CCGuard-Setup-0.7.4.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
 
-The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.3.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
+The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.4.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
 
 **From source**: needs Python 3.10+ (the official installer normally includes tkinter). Download "Source code (zip)" from the release page or clone the repository:
 

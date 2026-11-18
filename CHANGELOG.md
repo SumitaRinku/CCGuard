@@ -2,7 +2,7 @@
 
 每个版本给出主要变化与验证方式；逐次提交的细节见 git 历史。面向用户的简短更新日志在 `assets/monitor/release-notes.json`，面板“关于”页显示。
 
-## 未发布
+## 0.7.4（2026-11-18）
 
 - Claude 页写明建议使用 Claude 桌面版（Desktop），不建议使用命令行版 Claude Code（CLI）。
 - 开机自启列表不再列出 `CoworkVMService`（按用户决定不管它的开机启动）；关闭 Claude 时仍会停止该服务。

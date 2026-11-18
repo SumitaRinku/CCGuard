@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.7.4",
+    "date": "2026-11-18",
+    "items": [
+      "修复：检查更新显示 rate limit exceeded。GitHub 接口限流时改读发布页，照样能检查和安装更新",
+      "出口页信息更详细：地区核对、运营商、逐项风险标记、滥用评分、反向解析、RPKI、出口时区与本机时区对比、Cloudflare 节点",
+      "Claude 页注明建议使用桌面版（Desktop），不建议使用命令行版（CLI）",
+      "开机自启列表不再列出 CoworkVMService；关闭 Claude 时仍会停止它"
+    ]
+  },
+  {
     "version": "0.7.3",
     "date": "2026-11-18",
     "items": [
