@@ -99,6 +99,7 @@ def facts(data):
         'network': (('AS%s ' % asn) if asn else '') + org if (asn or org) else '未知',
         'kind': kind,
         'timezone': str(data.get('timezone') or '未知'),
+        'country_code': str(data.get('countryCode') or '').upper(),
         'flags': flags,
     }
 

@@ -4,7 +4,8 @@
 const LOG_LIMIT = 300;
 const STATES = ['ok', 'degraded', 'fail', 'unknown'];
 const STATE_TEXT = { ok: '正常', degraded: '降级', fail: '失效', unknown: '未知' };
-const PAGES = ['status', 'exit', 'history', 'log', 'settings', 'about'];
+const PAGES = ['status', 'exit', 'claude', 'history', 'log', 'settings', 'about'];
+const CHECK_TEXT = { ok: '正常', warn: '需调整', unknown: '未知', manual: '自查' };
 const DESIGN_WIDTH = 900;
 
 function stateClass(value) {
@@ -67,6 +68,20 @@ function updateView(result) {
            download: top.installer_url || top.page_url };
 }
 
+// Claude desktop status -> header pill, page state line and whether "close" is offered.
+function claudeView(status) {
+  if (!status || !status.running) return { cls: 'off', text: '未运行', pill: null, detail: '', canClose: false };
+  const detail = status.processes + ' 个进程' + (status.code_sessions ? '，' + status.code_sessions + ' 个 Claude Code 会话' : '');
+  if (status.background) {
+    return { cls: 'background', text: '窗口已关闭，仍在后台运行', pill: 'Claude 后台运行', detail, canClose: true };
+  }
+  return { cls: 'running', text: '运行中', pill: 'Claude 运行中', detail, canClose: true };
+}
+
+function checkClass(status) {
+  return { ok: 'ok', warn: 'degraded', unknown: 'unknown', manual: 'manual' }[status] || 'unknown';
+}
+
 function mergeLog(rows, delta, limit) {
   const merged = delta.rebuild ? delta.rows.slice() : rows.concat(delta.rows);
   return merged.length > limit ? merged.slice(merged.length - limit) : merged;
@@ -120,6 +135,7 @@ function bind() {
     if (page === 'settings') loadSettings();
     if (page === 'exit') api().ip_result().then(renderScore);
     if (page === 'about') loadAbout();
+    if (page === 'claude') loadClaude();
     if (page === 'log') scrollLog();
   }
 
@@ -256,6 +272,7 @@ function bind() {
   async function loadAbout() {
     const about = await api().about();
     $('about-version').textContent = about.version;
+    loadUpdatePrefs();
     const box = $('changelog');
     box.textContent = '';
     for (const entry of about.notes) {
@@ -271,12 +288,14 @@ function bind() {
   }
 
   let downloadUrl = null;
+  let canInstall = false;
 
   function renderUpdate(result) {
     const view = updateView(result);
     $('update-status').textContent = view.text;
     downloadUrl = view.download;
     $('update-download').hidden = !downloadUrl;
+    $('update-download').textContent = canInstall ? '下载并安装' : '去下载';
     $('update-badge').hidden = !(result && result.update);
     const box = $('update-releases');
     box.textContent = '';
@@ -305,6 +324,119 @@ function bind() {
       button.disabled = false;
       button.textContent = '检查更新';
     }
+  }
+
+  function confirmAction(title, text, ok) {
+    const dialog = $('confirm-dialog');
+    $('confirm-title').textContent = title;
+    $('confirm-text').textContent = text;
+    $('confirm-ok').textContent = ok;
+    return new Promise(resolve => {
+      for (const button of dialog.querySelectorAll('button')) {
+        button.onclick = () => { dialog.close(); resolve(button.value === 'ok'); };
+      }
+      dialog.oncancel = () => resolve(false);
+      dialog.showModal();
+    });
+  }
+
+  function renderClaudeStatus(status) {
+    const view = claudeView(status);
+    $('claude-state').className = 'claude-state ' + view.cls;
+    $('claude-state').textContent = view.text;
+    $('claude-detail').textContent = view.detail;
+    $('claude-close').hidden = !view.canClose;
+  }
+
+  function renderAutostart(result) {
+    const list = $('claude-autostart');
+    list.textContent = '';
+    const entries = (result && result.entries) || [];
+    if (!entries.length) {
+      const item = document.createElement('li');
+      item.className = 'muted';
+      item.textContent = result && result.ok === false ? result.message : '没有发现 Claude 的开机启动项';
+      list.append(item);
+      return;
+    }
+    for (const entry of entries) {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = entry.name;
+      const state = document.createElement('span');
+      state.className = 'chip ' + (entry.enabled ? 'degraded' : 'ok');
+      state.textContent = entry.enabled ? '已开启' : '已关闭';
+      item.append(name, state);
+      if (entry.enabled && !entry.locked) {
+        const off = document.createElement('button');
+        off.className = 'btn';
+        off.type = 'button';
+        off.textContent = '关闭';
+        off.onclick = async () => {
+          const result = await act(api().disable_claude_autostart(entry.id));
+          if (result.ok) renderAutostart({ ok: true, entries: result.entries });
+        };
+        item.append(off);
+      } else if (entry.locked) {
+        const note = document.createElement('span');
+        note.className = 'muted';
+        note.textContent = '由组织策略控制';
+        item.append(note);
+      }
+      list.append(item);
+    }
+  }
+
+  function renderChecklist(data) {
+    const list = $('checklist');
+    list.textContent = '';
+    for (const entry of data.items) {
+      const item = document.createElement('li');
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const title = document.createElement('span');
+      title.className = 'title';
+      title.textContent = entry.title;
+      const chip = document.createElement('span');
+      chip.className = 'chip ' + checkClass(entry.status);
+      chip.textContent = CHECK_TEXT[entry.status] || entry.status;
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = entry.note;
+      summary.append(title, chip, note);
+      const body = document.createElement('div');
+      body.className = 'body';
+      const why = document.createElement('p');
+      why.className = 'why';
+      why.textContent = entry.why;
+      const how = document.createElement('p');
+      how.className = 'how';
+      how.textContent = entry.how;
+      body.append(why, how);
+      details.append(summary, body);
+      item.append(details);
+      list.append(item);
+    }
+  }
+
+  async function loadClaude() {
+    renderClaudeStatus(await api().claude_status());
+    renderAutostart(await api().claude_autostart());
+    renderChecklist(await api().claude_code_checklist());
+  }
+
+  async function closeClaude() {
+    const ok = await confirmAction('关闭 Claude？', '会结束 Claude 的所有窗口和后台进程，正在运行的 Claude Code 任务也会中断。', '关闭 Claude');
+    if (!ok) return;
+    const result = await act(api().close_claude());
+    renderClaudeStatus(result.status);
+  }
+
+  async function loadUpdatePrefs() {
+    const prefs = await api().update_prefs();
+    $('auto-update').checked = prefs.auto_update_check;
+    canInstall = prefs.can_install;
+    if (prefs.result) renderUpdate(prefs.result);
   }
 
   async function loadHistory() {
@@ -377,6 +509,12 @@ function bind() {
       card(row);
       if (row.id === openCheck && row.state + row.code !== openKey) openDrawer(row.id);
     }
+    const claude = claudeView(snap.claude);
+    $('claude-pill').hidden = !claude.pill;
+    $('claude-pill').textContent = claude.pill || '';
+    $('claude-pill').className = 'claude-pill ' + claude.cls;
+    $('claude-badge').hidden = !(snap.claude && snap.claude.background);
+    if (snap.update_available) $('update-badge').hidden = false;
     renderLog(snap.log);
     logTotal = snap.log.total;
     if (snap.notice) toast(snap.notice);
@@ -453,7 +591,23 @@ function bind() {
   $('score-detail').onclick = () => act(api().open_ip_detail());
   $('score-credit').onclick = () => act(api().open_ip_detail());
   $('update-run').onclick = runUpdate;
-  $('update-download').onclick = () => act(api().open_release(downloadUrl));
+  $('update-download').onclick = async () => {
+    if (!canInstall) { act(api().open_release(downloadUrl)); return; }
+    const ok = await confirmAction('安装新版本？', '会下载安装程序并校验，然后关闭 CCGuard 完成安装，安装后自动重新打开。', '下载并安装');
+    if (!ok) return;
+    $('update-download').disabled = true;
+    $('update-download').textContent = '下载中…';
+    const result = await act(api().install_update());
+    if (!result.ok) {
+      $('update-download').disabled = false;
+      $('update-download').textContent = '下载并安装';
+    }
+  };
+  $('auto-update').onchange = event => act(api().set_auto_update(event.target.checked));
+  $('claude-close').onclick = closeClaude;
+  $('claude-pill').onclick = () => select('claude');
+  $('startup-settings').onclick = () => act(api().open_startup_settings());
+  $('guide-open').onclick = () => act(api().open_claude_code_guide());
   $('drawer-close').onclick = closeDrawer;
   $('settings').onsubmit = event => { event.preventDefault(); act(api().apply(form(), false)); };
   $('save').onclick = () => act(api().apply(form(), true));
@@ -487,7 +641,7 @@ function bind() {
   document.addEventListener('keydown', event => {
     if (event.key === 'F5') { event.preventDefault(); act(api().refresh()); }
     if (event.key === 'Escape' && openCheck) closeDrawer();
-    if (event.ctrlKey && ['1', '2', '3', '4', '5', '6'].includes(event.key)) {
+    if (event.ctrlKey && ['1', '2', '3', '4', '5', '6', '7'].includes(event.key)) {
       event.preventDefault();
       select(PAGES[Number(event.key) - 1]);
     }
@@ -511,7 +665,7 @@ function bind() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { stateClass, subtitleText, barBlocks, codeParts, clock, scoreView, updateView, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
+  module.exports = { stateClass, subtitleText, barBlocks, codeParts, clock, scoreView, updateView, claudeView, checkClass, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
 } else if (typeof window !== 'undefined') {
   if (window.pywebview && window.pywebview.api) bind();
   else window.addEventListener('pywebviewready', bind, { once: true });

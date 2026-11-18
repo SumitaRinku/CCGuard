@@ -671,6 +671,35 @@ class RuntimeConfigDiscovery(unittest.TestCase):
         self.assertIsNone(m.find_runtime_config('flclash', {}))
 
 
+class TrayScript(unittest.TestCase):
+    TRAY = (ROOT / 'assets/monitor/tray.ps1').read_text(encoding='utf-8-sig')
+
+    def test_quit_file_is_passed(self):
+        cfg = {'alerts': {'interval_seconds': 5, 'cooldown_seconds': 120}}
+        argv = m.tray_argv('s.json', '', cfg, 'show.req', quit_file='quit.req')
+        self.assertEqual(argv[argv.index('-QuitFile') + 1], 'quit.req')
+        self.assertNotIn('-QuitFile', m.tray_argv('s.json', '', cfg))
+
+    def test_quit_asks_first_and_then_tells_the_panel(self):
+        self.assertIn('[string]$QuitFile', self.TRAY)
+        self.assertIn('$exitItem.add_Click({ Exit-App })', self.TRAY)
+        exit_app = self.TRAY.split('function Exit-App {', 1)[1].split('\n}', 1)[0]
+        self.assertLess(exit_app.index('Confirm-Quit'), exit_app.index('$QuitFile'))
+        self.assertIn('if (-not (Confirm-Quit)) { return }', exit_app)
+
+    def test_menu_is_dpi_aware_before_any_window(self):
+        dpi = self.TRAY.index('SetProcessDpiAwarenessContext([System.IntPtr](-4))')
+        self.assertLess(dpi, self.TRAY.index('New-Object System.Windows.Forms.NotifyIcon'))
+        self.assertLess(dpi, self.TRAY.index('New-Object System.Windows.Forms.ContextMenuStrip'))
+
+    def test_open_panel_grants_foreground(self):
+        open_panel = self.TRAY.split('function Open-Panel {', 1)[1].split('\n}', 1)[0]
+        self.assertLess(open_panel.index('AllowSetForegroundWindow(-1)'), open_panel.index('$ShowFile'))
+
+    def test_script_keeps_its_bom_for_windows_powershell(self):
+        self.assertEqual((ROOT / 'assets/monitor/tray.ps1').read_bytes()[:3], b'\xef\xbb\xbf')
+
+
 class RecordingRunner:
     """Stands in for subprocess.run; records argv and returns a fixed JSON reply."""
     def __init__(self, reply, returncode=0):

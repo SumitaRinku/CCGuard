@@ -39,6 +39,9 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 | **处理指引** | 点开任一检查卡片，查看它检查什么、当前结果对应的处理步骤、这一项最近 24 小时的变化和结果代码 |
 | **检测日志** | 每项检查都记下读了哪条系统查询、看到了什么、为什么判成这个状态，在卡片详情的“检测过程”里逐条列出；不含 IP 和文件路径。原理见 [检测原理](docs/monitor.md#principles) |
 | **出口评分** | “出口”页一键查看当前出口 IP 的信任分、类型（住宅／机房）、地区、运营商和 VPN／代理／滥用标记，数据来自 [ip.net.coffee](https://ip.net.coffee/claude/)；可在浏览器打开完整检测页。检测过程不连接 Claude，见 [出口评分](docs/monitor.md#exit-score) |
+| **Claude 后台提醒** | Claude 桌面版（MSIX）关掉窗口后仍在后台运行并联网；面板顶部和“Claude”页显示它是否在运行、有没有窗口、带着几个 Claude Code 会话，可一键结束全部进程。只看进程列表，不连接 Claude |
+| **Claude 开机自启** | 查出 Claude 的应用启动任务（StartupTask）、注册表 Run 项和启动文件夹快捷方式，开着的可在面板里直接关闭，效果与任务管理器“禁用”相同 |
+| **Claude Code 检查清单** | 按 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html) 整理 11 项：出口 IP、TLS 指纹、DNS、IPv6、分流规则顺序、长连接等。能从本机检查、出口评分和代理配置判断的项直接给出结果，其余给出自查方法 |
 | **窗口 + 托盘 + 网页** | WebView 面板（默认）／tkinter 面板（回退）、托盘通知、`127.0.0.1` 本地网页备选 |
 | **系统通知** | 状态跃迁时提醒，带冷却与恢复提示；可暂停 |
 | **可选开机自启** | 当前用户 Startup 快捷方式，登录后隐藏到托盘；默认关闭，可随时撤销 |
@@ -64,7 +67,7 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 
 出口评分补上最后一环：出口 IP 是机房 IP、被标记为 VPN／代理，或位于 Claude 不提供服务的地区时，即使本机设置全部正常，风控风险也更高。
 
-**CCGuard 本身**：只读本机，不改防火墙、路由和代理配置，不需要管理员；监测不联网，出口评分和检查更新只在你点击时联网，都不连接 Claude；状态、日志和通知不含 IP 地址与文件路径；默认不开机自启。
+**CCGuard 本身**：只读本机，不改防火墙、路由和代理配置，不需要管理员；监测不联网，出口评分和检查更新只在你点击（或开启每日自动检查更新）时联网，都不连接 Claude；状态、日志和通知不含 IP 地址与文件路径；默认不开机自启。
 
 ## 快速开始
 
@@ -75,9 +78,9 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 
 ### 2. 安装
 
-**安装程序（推荐）**：下载 [`CCGuard-Setup-0.6.1.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.6.1/CCGuard-Setup-0.6.1.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
+**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.0.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
 
-安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.6.1.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
+安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.0.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
 
 **源码运行**：需要 Python 3.10+（官方安装包通常自带 tkinter）。下载 Release 页的 “Source code (zip)” 或克隆仓库：
 
@@ -269,7 +272,8 @@ python ...\monitor.py register-notifier --config <private>\monitor.json
 - **字体**：安装版自带思源黑体（Noto Sans SC，SIL OFL 1.1），界面在所有电脑上一致，不依赖系统装了什么字体。Python 版不带字体文件，按已安装字体选：`Noto Sans SC` → `MiSans` → `HarmonyOS Sans SC` → 思源黑体 → `Microsoft YaHei UI`（Windows 自带）。英文字标用 Anthropic Serif（自备时）或 Georgia，检查码用 Anthropic Mono／`Cascadia Mono`／`Consolas`。
 - **界面实现**：`gui --ui auto`（默认）优先 WebView，失败回退 tkinter；`--ui web` 只用 WebView（不可用时报错），`--ui tk` 只用 tkinter。
 - **关闭窗口**：有托盘时可隐藏到托盘、直接关闭或取消；没有托盘时只提供关闭或取消。
-- **托盘**：盾牌图标随整体状态换色，悬停显示状态；状态跃迁时按冷却发系统通知，恢复也提示。
+- **托盘退出**：右键托盘图标选“退出”会先确认，确认后监测、托盘和面板一起退出，不会再自动弹回。“打开面板”会把窗口带到最前面。
+- **托盘**：菜单按系统缩放清晰显示；盾牌图标随整体状态换色，悬停显示状态；状态跃迁时按冷却发系统通知，恢复也提示。
 - **网页备选**：`serve` 只监听 `127.0.0.1` 的随机端口，路径带随机会话令牌，并校验 `Host`、`Origin`、`Sec-Fetch-Site`，带严格 CSP。
 - **通知署名**：托盘运行在 PowerShell 中，默认显示「Windows PowerShell」。执行一次 `register-notifier` 后，通知以 CCGuard 署名；撤销用 `unregister-notifier`。
 - 专注助手或系统通知设置可能吞掉气泡；以面板显示为准。
@@ -303,7 +307,9 @@ scripts/
   monitor_history.py        状态历史（history.jsonl）与时间线
   monitor_guide.py          各检查项的说明与处理步骤
   ip_score.py               手动出口评分
-  app_update.py             手动检查更新与更新日志
+  app_update.py             检查更新、下载校验与安装、更新日志
+  claude_app.py             Claude 桌面版运行状态、关闭与开机自启
+  claude_code_guide.py      Claude Code 稳定使用检查清单
   version.py                版本号（唯一来源）
 assets/monitor/             面板页面、图标、托盘脚本、更新日志
 packaging/                  CCGuard.exe 入口、PyInstaller 配置、Inno Setup 安装脚本与中文向导
@@ -315,8 +321,10 @@ docs/                       使用说明与设计决策
 ## 版本与更新
 
 - **查看版本**：面板“关于”页显示当前版本；命令行 `monitor.py --version`；安装版也写在 `CCGuard.exe` 的文件属性里。
-- **检查更新**：“关于”页点“检查更新”，向 GitHub 读取本仓库已发布的版本（不含草稿和预发布），列出比当前新的版本和它们的发布说明；“去下载”在浏览器里打开安装程序或发布页。只在点击时联网，只访问 GitHub，不自动下载、不自动安装。命令行：`monitor.py update-check`。
-- **升级**：运行新版本的安装程序即可覆盖安装，会先关闭正在运行的 CCGuard，保留 `monitor.json` 与 `history.jsonl`。
+- **检查更新**：“关于”页点“检查更新”，向 GitHub 读取本仓库已发布的版本（不含草稿和预发布），列出比当前新的版本和它们的发布说明。只访问 GitHub。命令行：`monitor.py update-check`。
+- **自动检查（可选）**：“关于”页勾选“自动检查更新”后，每天最多检查一次，有新版本时在面板顶部提示；默认关闭，设置存在配置旁的 `prefs.json`。
+- **软件内安装**：安装版点“下载并安装”，确认后从本仓库 Release 下载安装程序，用同一发布里的 `SHA256SUMS-installer-*.txt` 校验哈希，校验通过才关闭 CCGuard、静默安装并自动重新打开；哈希不符时不安装。源码运行时改为在浏览器打开发布页。
+- **手动升级**：运行新版本的安装程序即可覆盖安装，会先关闭正在运行的 CCGuard，保留 `monitor.json` 与 `history.jsonl`。
 - **更新日志**：“关于”页列出每个版本的主要变化（随程序打包，离线可看）；完整开发记录见 [CHANGELOG.md](CHANGELOG.md)。
 - **版本号规则**：`主版本.次版本.修订号`。只修问题升修订号，加功能升次版本号。版本号只写在 `scripts/version.py` 一处，界面、命令行、exe 属性和安装程序都读它。
 
@@ -357,6 +365,7 @@ python -m pip install -r requirements-build.txt && python tools/build_windows.py
 ## 数据来源与致谢
 
 - **出口评分**的信任分、IP 类型、地区、运营商与风险标记来自 [ip.net.coffee](https://ip.net.coffee/claude/) 的公开接口，评分分段和受限地区规则与其 Claude IP 检测页一致；完整检测页（含 Claude 出口 IP、DNS 与 WebRTC 泄露）请在浏览器里打开该网站查看。
+- **Claude Code 检查清单**的条目和原理参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，用自己的话整理，面板里可一键打开原文。
 - **出口 IP** 由 Cloudflare 的 `1.1.1.1/cdn-cgi/trace` 返回。
 - 安装版界面字体为思源黑体（[Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)，Adobe 与 Google 发布，SIL Open Font License 1.1），构建时从 [google/fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc) 的固定提交下载并校验哈希，许可文本随程序附带（安装目录 `_internal\ccguard\assets\monitor\fonts\OFL.txt`）。
 - 安装向导的简体中文翻译来自 Inno Setup 官方仓库收录的社区翻译（[jrsoftware/issrc](https://github.com/jrsoftware/issrc) 的 `Files/Languages/Unofficial/ChineseSimplified.isl`，维护者 Kira），原样保留其署名。

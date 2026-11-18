@@ -46,6 +46,17 @@ assert.match(uv.download, /CCGuard-Setup-0\.7\.0\.exe$/);
 assert.match(panel.updateView({ok: true, update: true, releases: [{version: '0.7.0', date: '', installer_url: null,
   page_url: 'https://github.com/SumitaRinku/CCGuard/releases/tag/v0.7.0'}]}).download, /tag\/v0\.7\.0$/);
 
+assert.deepEqual(panel.claudeView(null), {cls: 'off', text: '未运行', pill: null, detail: '', canClose: false});
+const bg = panel.claudeView({running: true, background: true, processes: 12, code_sessions: 2});
+assert.equal(bg.cls, 'background');
+assert.equal(bg.pill, 'Claude 后台运行');
+assert.equal(bg.detail, '12 个进程，2 个 Claude Code 会话');
+assert.equal(bg.canClose, true);
+assert.equal(panel.claudeView({running: true, background: false, processes: 3, code_sessions: 0}).detail, '3 个进程');
+assert.equal(panel.checkClass('warn'), 'degraded');
+assert.equal(panel.checkClass('manual'), 'manual');
+assert.equal(panel.checkClass('weird'), 'unknown');
+
 assert.equal(panel.logLine({time: '12:00:00', kind: '状态', text: 'x'}), '12:00:00  [状态]  x');
 assert.deepEqual(Array.from(panel.base64ToBytes(Buffer.from([0, 1, 254, 255]).toString('base64'))), [0, 1, 254, 255]);
 assert.equal(panel.LOG_LIMIT, 300);

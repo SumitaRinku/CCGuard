@@ -328,11 +328,12 @@ def run(cfg, config_path, tray=False, start_hidden=False):
     state_dir = Path(tempfile.mkdtemp(prefix='guardian-monitor-gui-'))
     state_path = state_dir / 'state.json'
     show_path = state_dir / 'show.request'
+    quit_path = state_dir / 'quit.request'
     store = engine.Store(cfg, state_path)
     history = monitor_history.History(monitor_history.history_path(config_path)).open()
     # The first collection runs in the loop thread so the window appears without waiting for PowerShell.
     threading.Thread(target=store.loop, daemon=True).start()
-    box = {'child': engine.spawn_tray(state_path, '', cfg, show_file=show_path)
+    box = {'child': engine.spawn_tray(state_path, '', cfg, show_file=show_path, quit_file=quit_path)
            if tray and platform.system() == 'Windows' else None}
 
     root = tk.Tk()
@@ -946,6 +947,9 @@ def run(cfg, config_path, tray=False, start_hidden=False):
             if root.state() == 'withdrawn':
                 root.deiconify()
             root.lift()
+            # Opened from the tray: lift above other windows, then let it behave normally again.
+            root.attributes('-topmost', True)
+            root.after(300, lambda: root.attributes('-topmost', False))
             root.focus_force()
         except Exception:
             pass
@@ -1021,6 +1025,10 @@ def run(cfg, config_path, tray=False, start_hidden=False):
         if autostart_state['checked'] and not autostart_state['applied']:
             autostart_var.set(autostart_state['enabled'])
             autostart_state['applied'] = True
+        if quit_path.exists():
+            # The user confirmed "退出" in the tray menu: leave completely, do not reappear.
+            shutdown()
+            return
         state = store.read()
         rendered['rows'] = build_rows(state)
         render(state)

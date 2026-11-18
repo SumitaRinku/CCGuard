@@ -5,12 +5,27 @@
     [Parameter(Mandatory=$true)][string]$IconDir,
     [int]$IntervalSeconds = 5,
     [int]$CooldownSeconds = 120,
-    [int]$OwnerPid = 0
+    [int]$OwnerPid = 0,
+    [string]$QuitFile = ''
 )
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+# DPI awareness before any window exists: otherwise Windows bitmap-stretches the tray menu on
+# high-DPI screens and its text looks blurry. AllowSetForegroundWindow lets the panel come to the
+# front when the user opens it from the tray (the click gives this process the foreground right).
+Add-Type -Namespace CCGuard -Name Native -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr value);
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int processId);
+'@
+try {
+    if (-not [CCGuard.Native]::SetProcessDpiAwarenessContext([System.IntPtr](-4))) { [void][CCGuard.Native]::SetProcessDPIAware() }
+} catch {
+    try { [void][CCGuard.Native]::SetProcessDPIAware() } catch {}
+}
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
 $labels = @{
     proxy_core = '代理核心'; tun_adapter = 'TUN 网卡'; default_route = '默认路由';
@@ -31,13 +46,44 @@ $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
+$menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $openItem = $menu.Items.Add('打开面板')
 $pauseItem = $menu.Items.Add('暂停提醒')
 $pauseItem.CheckOnClick = $true
 $exitItem = $menu.Items.Add('退出')
 function Open-Panel {
+    try { [void][CCGuard.Native]::AllowSetForegroundWindow(-1) } catch {}
     if ($Url) { Start-Process $Url; return }
     if ($ShowFile) { New-Item -ItemType File -Path $ShowFile -Force | Out-Null }
+}
+
+function Confirm-Quit {
+    $owner = New-Object System.Windows.Forms.Form
+    $owner.TopMost = $true
+    $owner.ShowInTaskbar = $false
+    $owner.StartPosition = 'Manual'
+    $owner.Location = New-Object System.Drawing.Point(-32000, -32000)
+    $owner.Size = New-Object System.Drawing.Size(1, 1)
+    $owner.Show()
+    $owner.Activate()
+    try {
+        $answer = [System.Windows.Forms.MessageBox]::Show($owner, '退出后监测和提醒都会停止。', ('退出 ' + $AppName + '？'),
+            [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Question,
+            [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+    } finally {
+        $owner.Dispose()
+    }
+    return $answer -eq [System.Windows.Forms.DialogResult]::OK
+}
+
+function Exit-App {
+    if (-not (Confirm-Quit)) { return }
+    # Tell the panel this is a deliberate quit, so it exits too instead of reappearing.
+    if ($QuitFile) { try { New-Item -ItemType File -Path $QuitFile -Force | Out-Null } catch {} }
+    $timer.Stop()
+    $tray.Visible = $false
+    $tray.Dispose()
+    [System.Windows.Forms.Application]::Exit()
 }
 
 if ($Url -or $ShowFile) {
@@ -48,7 +94,7 @@ if ($Url -or $ShowFile) {
     $openItem.Text = '打开面板（不可用）'
 }
 $pauseItem.add_Click({ $script:paused = $pauseItem.Checked })
-$exitItem.add_Click({ $tray.Visible = $false; $tray.Dispose(); [System.Windows.Forms.Application]::Exit() })
+$exitItem.add_Click({ Exit-App })
 $tray.ContextMenuStrip = $menu
 
 function Get-StateIcon([string]$state) {

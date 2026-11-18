@@ -15,6 +15,8 @@ import time
 import monitor as engine
 import monitor_gui as shared
 import app_update
+import claude_app
+import claude_code_guide
 import ip_score
 import monitor_guide
 import monitor_history
@@ -83,6 +85,36 @@ def closing_handler(window, flags, start=None):
     return on_closing
 
 
+def bring_to_front(hwnd, user32=None):
+    """Restore the window and put it above other windows, then give it focus.
+
+    Windows only lets a process take the foreground when it was allowed to: the tray calls
+    AllowSetForegroundWindow before asking the panel to show itself. Toggling TOPMOST lifts the
+    window even where SetForegroundWindow is still refused.
+    """
+    if not hwnd:
+        return False
+    try:
+        if user32 is None:
+            import ctypes
+            user32 = ctypes.windll.user32
+        user32.ShowWindow(hwnd, 9)                                  # SW_RESTORE
+        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)   # HWND_TOPMOST
+        user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)   # HWND_NOTOPMOST
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
+def window_handle(window):
+    try:
+        return int(window.native.Handle.ToInt64())
+    except Exception:
+        return 0
+
+
 class Unavailable(Exception):
     """pywebview or the Edge WebView2 runtime cannot show the panel."""
 
@@ -124,8 +156,16 @@ class PanelApi:
 
     def __init__(self, cfg, config_path, store, tray_alive=lambda: False, autostart=None,
                  open_file=None, clock=time.time, history=None, screen=None,
-                 score_check=None, open_url=None, update_check=None):
+                 score_check=None, open_url=None, update_check=None, claude=None, prefs_path=None,
+                 frozen=None, download=None, start_install=None):
         self._cfg = cfg
+        self._claude = claude or claude_app
+        self._claude_state = None
+        self._prefs_path = Path(prefs_path) if prefs_path else app_update.prefs_path(config_path)
+        self._frozen = engine.FROZEN if frozen is None else frozen
+        self._download = download or app_update.download_installer
+        self._start_install = start_install or app_update.start_install
+        self._update = None
         self._update_check = update_check or app_update.check
         self._update_lock = threading.Lock()
         self._score_check = score_check or ip_score.check
@@ -195,7 +235,10 @@ class PanelApi:
         rebuild = fresh > len(rows_log) or fresh < 0
         tail = rows_log if rebuild else (rows_log[len(rows_log) - fresh:] if fresh > 0 else [])
         notice, self._notice = self._notice, None
+        claude = self._claude_state or {}
         return {
+            'claude': {'running': bool(claude.get('running')), 'background': bool(claude.get('background'))},
+            'update_available': bool(self._update and self._update.get('update')),
             'overall': overall,
             'checked_at': stamp,
             'rows': rows,
@@ -268,6 +311,105 @@ class PanelApi:
     def about(self):
         return {'version': app_update.__version__, 'notes': app_update.release_notes()}
 
+    def _refresh_claude(self):
+        self._claude_state = self._claude.status()
+        return self._claude_state
+
+    def claude_status(self):
+        state = self._refresh_claude()
+        return {key: value for key, value in state.items() if not key.startswith('_')}
+
+    def close_claude(self):
+        """End the Claude desktop app and the Claude Code sessions it started (user confirmed in the page)."""
+        try:
+            result = self._claude.close()
+        except Exception as error:
+            return {'ok': False, 'message': '没能关闭 Claude：' + str(error), 'status': self.claude_status()}
+        time.sleep(0.5)
+        self._note('Claude', '已关闭 Claude（%d 个主进程）' % result.get('closed', 0))
+        return {'ok': True, 'message': '已关闭 Claude' if result.get('closed') else 'Claude 没有在运行',
+                'status': self.claude_status()}
+
+    def claude_autostart(self):
+        try:
+            return {'ok': True, 'entries': self._claude.autostart()}
+        except Exception as error:
+            return {'ok': False, 'entries': [], 'message': '读取启动项失败：' + str(error)}
+
+    def disable_claude_autostart(self, entry_id):
+        try:
+            self._claude.disable_autostart(entry_id)
+        except Exception as error:
+            return {'ok': False, 'message': '没能关闭开机自启：' + str(error)}
+        self._note('Claude', '已关闭 Claude 开机自启：' + str(entry_id).split(':')[-1])
+        return {'ok': True, 'message': '已关闭 Claude 开机自启', 'entries': self._claude.autostart()}
+
+    def open_startup_settings(self):
+        try:
+            if self._open_file is None:
+                raise OSError
+            self._open_file('ms-settings:startupapps')
+        except OSError:
+            return {'ok': False, 'message': '无法打开系统的启动应用设置'}
+        return {'ok': True, 'message': '已打开系统的启动应用设置'}
+
+    def claude_code_checklist(self):
+        profile = engine.proxy_profile(self._cfg)
+        routing = claude_code_guide.read_routing(profile['runtime_config'], profile['config_format'])
+        items = claude_code_guide.evaluate(self._store.read().get('checks'), self._ip, routing)
+        return {'items': items, 'source': claude_code_guide.SOURCE_URL}
+
+    def open_claude_code_guide(self):
+        return self._open(claude_code_guide.SOURCE_URL, '已在浏览器打开 Claude Code 稳定使用指南')
+
+    def update_prefs(self):
+        prefs = app_update.load_prefs(self._prefs_path)
+        return {'auto_update_check': prefs['auto_update_check'], 'can_install': bool(self._frozen),
+                'last_update_check': prefs['last_update_check'], 'result': self._update}
+
+    def set_auto_update(self, enabled):
+        prefs = app_update.load_prefs(self._prefs_path)
+        prefs['auto_update_check'] = bool(enabled)
+        try:
+            app_update.save_prefs(self._prefs_path, prefs)
+        except OSError as error:
+            return {'ok': False, 'message': '设置没有保存：' + str(error)}
+        self._note('更新', '已开启自动检查更新' if enabled else '已关闭自动检查更新')
+        return {'ok': True, 'message': '已开启自动检查更新（每天一次）' if enabled else '已关闭自动检查更新'}
+
+    def _auto_check(self):
+        """Run by the watcher: at most once a day, only when the user turned it on."""
+        prefs = app_update.load_prefs(self._prefs_path)
+        if not app_update.auto_check_due(prefs, self._clock()):
+            return None
+        prefs['last_update_check'] = int(self._clock())
+        try:
+            app_update.save_prefs(self._prefs_path, prefs)
+        except OSError:
+            pass
+        result = self.check_update()
+        if result.get('update'):
+            self._notice = '有新版本 %s，可在“关于”页安装' % result['latest']
+        return result
+
+    def install_update(self):
+        """Download, verify and run the newest installer, then exit so it can replace CCGuard."""
+        result = self._update
+        if not (result and result.get('update') and result.get('releases')):
+            return {'ok': False, 'message': '先检查更新'}
+        release = result['releases'][0]
+        if not self._frozen:
+            return self.open_release(release.get('page_url'))
+        try:
+            target = self._download(release, app_update.prefs_path(self._config_path).parent / 'updates')
+            self._start_install(target)
+        except Exception as error:
+            return {'ok': False, 'message': '更新没有安装：' + str(error)}
+        self._note('更新', '开始安装 %s，CCGuard 将退出并在安装后重新打开' % release['version'])
+        if self._on_close is not None:
+            threading.Timer(0.8, self._on_close, args=('exit',)).start()
+        return {'ok': True, 'message': '正在安装 %s，CCGuard 会自动重新打开' % release['version']}
+
     def check_update(self):
         """Newer releases from GitHub, only on the user's click; nothing is downloaded."""
         if not self._update_lock.acquire(blocking=False):
@@ -276,6 +418,7 @@ class PanelApi:
             result = self._update_check()
         finally:
             self._update_lock.release()
+        self._update = result
         if result.get('ok'):
             self._note('更新', '发现新版本 %s' % result['latest'] if result['update'] else '已是最新版本')
         else:
@@ -404,8 +547,9 @@ def run(cfg, config_path, tray=False, start_hidden=False, webview=None):
     state_dir = Path(tempfile.mkdtemp(prefix='guardian-monitor-web-'))
     state_path = state_dir / 'state.json'
     show_path = state_dir / 'show.request'
+    quit_path = state_dir / 'quit.request'
     store = engine.Store(cfg, state_path)
-    box = {'child': engine.spawn_tray(state_path, '', cfg, show_file=show_path)
+    box = {'child': engine.spawn_tray(state_path, '', cfg, show_file=show_path, quit_file=quit_path)
            if tray and platform.system() == 'Windows' else None}
 
     def tray_alive():
@@ -454,7 +598,21 @@ def run(cfg, config_path, tray=False, start_hidden=False, webview=None):
         if hidden:
             api._note('面板', '已隐藏到托盘，监测继续')
         threading.Thread(target=store.loop, daemon=True).start()
+        ticks = 0
         while not store.stop.is_set():
+            if quit_path.exists():
+                # The user confirmed "退出" in the tray menu: leave completely, do not reappear.
+                flags['exit'] = True
+                window.destroy()
+                return
+            if ticks % 5 == 0:
+                try:
+                    api._refresh_claude()
+                except Exception:
+                    pass
+            if ticks % 60 == 15:
+                threading.Thread(target=api._auto_check, daemon=True).start()
+            ticks += 1
             api._observe()
             api._record()
             overall = store.read().get('overall', 'unknown')
@@ -469,8 +627,11 @@ def run(cfg, config_path, tray=False, start_hidden=False, webview=None):
                 flags['visible'] = True
                 window.show()
                 window.restore()
+                bring_to_front(window_handle(window))
             if box['child'] is not None and box['child'].poll() is not None:
                 box['child'] = None
+                if quit_path.exists():
+                    continue
                 if not flags['visible']:
                     flags['visible'] = True
                     window.show()

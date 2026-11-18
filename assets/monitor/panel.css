@@ -176,6 +176,43 @@ h1 { font-size: 22px; line-height: 1.3; margin: 0; font-weight: 700; letter-spac
 .check input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 .actions { display: flex; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 
+/* Header actions and Claude indicator */
+.top-actions { display: flex; align-items: center; gap: 10px; }
+.claude-pill { border: 0; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+               background: var(--soft); color: var(--muted); }
+.claude-pill.background { background: var(--degraded-tint); color: var(--degraded); }
+.btn.danger { background: var(--fail-tint); color: var(--fail); }
+.btn.danger:hover { background: var(--fail); color: #fff; }
+
+/* Claude page */
+.claude-card, .checklist-card { padding: 16px 20px; margin-bottom: var(--gap); }
+.claude-head { display: flex; align-items: center; gap: 12px; }
+.claude-head h3, .claude-startup h3 { margin: 0 0 6px; font-size: 15px; }
+.claude-state { font-size: 16px; font-weight: 700; }
+.claude-state.running { color: var(--ok); }
+.claude-state.background { color: var(--degraded); }
+.claude-state.off { color: var(--muted); }
+.claude-startup { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.entries { list-style: none; margin: 0 0 6px; padding: 0; }
+.entries li { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 13.5px; }
+.entries li .muted { color: var(--muted); }
+.entries .btn { padding: 3px 12px; font-size: 13px; }
+.checklist { list-style: none; margin: 8px 0 0; padding: 0; }
+.checklist li { border-top: 1px solid var(--line); }
+.checklist li:first-child { border-top: 0; }
+.checklist summary { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 9px 2px; cursor: pointer; list-style: none; }
+.checklist summary::-webkit-details-marker { display: none; }
+.checklist .title { font-weight: 600; font-size: 14px; }
+.checklist .note { grid-column: 1; color: var(--muted); font-size: 13px; }
+.checklist .chip { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.chip.manual { color: var(--muted); background: var(--soft); }
+.checklist .body { padding: 0 2px 10px; font-size: 13.5px; }
+.checklist .body p { margin: 4px 0; }
+.checklist .body .how { color: var(--ink); }
+.checklist .body .why { color: var(--muted); }
+.auto-update { display: flex; padding: 12px 20px; margin-bottom: var(--gap); }
+.confirm-text { color: var(--muted); font-size: 13.5px; margin: -8px 0 18px; }
+
 /* Exit score */
 .score-card { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin-bottom: var(--gap); }
 .score { display: flex; align-items: baseline; gap: 10px; }

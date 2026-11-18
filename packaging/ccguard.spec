@@ -18,7 +18,7 @@ a = Analysis(
            (str(FONT_DIR), 'ccguard/assets/monitor/fonts')],
     # Imported lazily by monitor.py / the panel, so name them for the analysis.
     hiddenimports=['monitor', 'monitor_webview', 'monitor_gui', 'monitor_history', 'monitor_guide',
-                   'ip_score', 'app_update', 'version', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'clr'],
+                   'ip_score', 'app_update', 'version', 'claude_app', 'claude_code_guide', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'clr'],
     excludes=['yaml', 'unittest', 'pydoc', 'doctest'],
     noarchive=False,
 )

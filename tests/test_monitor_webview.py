@@ -7,6 +7,7 @@ import tempfile
 import threading
 import types
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / 'scripts'
@@ -52,6 +53,9 @@ def failing_state(stamp=1000):
         {'id': 'proxy_core', 'state': 'ok', 'code': 'PROXY_CORE_RUNNING'},
         {'id': 'firewall_block', 'state': 'fail', 'code': 'FIREWALL_ALLOW_OUTBOUND'},
         {'id': 'core_ipv6', 'state': 'degraded', 'code': 'CORE_IPV6_ON'}]}
+
+
+PAGE_URL = 'https://github.com/SumitaRinku/CCGuard/releases'
 
 
 class Base(unittest.TestCase):
@@ -369,6 +373,129 @@ class AboutAndUpdate(Base):
         self.assertTrue(self.api.open_release(page + '/download/v1.0.0/CCGuard-Setup-1.0.0.exe')['ok'])
         self.assertFalse(self.api.open_release('https://evil.example/setup.exe')['ok'])
         self.assertEqual(opened, [page, page + '/download/v1.0.0/CCGuard-Setup-1.0.0.exe'])
+
+
+class ClaudeAndUpdates(Base):
+    def setUp(self):
+        super().setUp()
+        self.claude_calls = []
+        state = {'running': True, 'window': False, 'background': True, 'processes': 3, 'code_sessions': 1,
+                 'kind': 'msix', 'supported': True, '_roots': [7]}
+        self.api._claude = types.SimpleNamespace(
+            status=lambda: dict(state),
+            close=lambda: self.claude_calls.append('close') or {'closed': 1},
+            autostart=lambda: [{'id': 'task:Claude_x:ClaudeStartup', 'enabled': False}],
+            disable_autostart=lambda entry_id: self.claude_calls.append(entry_id) or {'ok': True})
+        self.api._prefs_path = self.dir / 'prefs.json'
+
+    def test_claude_status_hides_internal_fields_and_feeds_the_snapshot(self):
+        status = self.api.claude_status()
+        self.assertNotIn('_roots', status)
+        self.assertTrue(status['background'])
+        self.assertEqual(self.api.snapshot(0)['claude'], {'running': True, 'background': True})
+
+    def test_close_and_disable_are_logged(self):
+        with patch.object(web.time, 'sleep'):
+            self.assertTrue(self.api.close_claude()['ok'])
+        self.assertTrue(self.api.disable_claude_autostart('task:Claude_x:ClaudeStartup')['ok'])
+        self.assertEqual(self.claude_calls, ['close', 'task:Claude_x:ClaudeStartup'])
+        self.assertIn('已关闭 Claude', self.api.log_text())
+        self.assertIn('已关闭 Claude 开机自启', self.api.log_text())
+
+    def test_close_failure_is_reported(self):
+        def boom():
+            raise RuntimeError('access denied')
+        self.api._claude.close = boom
+        result = self.api.close_claude()
+        self.assertFalse(result['ok'])
+        self.assertIn('access denied', result['message'])
+
+    def test_startup_settings_and_guide_open(self):
+        opened = []
+        self.api._open_file = opened.append
+        self.api._open_url = lambda url: opened.append(url) or True
+        self.assertTrue(self.api.open_startup_settings()['ok'])
+        self.assertTrue(self.api.open_claude_code_guide()['ok'])
+        self.assertEqual(opened, ['ms-settings:startupapps', 'https://ip.net.coffee/claude/claudecode.html'])
+
+    def test_checklist_uses_monitor_checks_and_exit_score(self):
+        self.store.state = dict(failing_state(), checks=[{'id': 'dns_hijack', 'state': 'ok'}, {'id': 'dns_servers', 'state': 'ok'}])
+        self.api._ip = {'ok': True, 'score': 99, 'facts': {'kind': '住宅', 'flags': [], 'country_code': 'JP', 'location': 'JP'}}
+        items = {item['id']: item['status'] for item in self.api.claude_code_checklist()['items']}
+        self.assertEqual((items['dns_proxy'], items['exit_ip'], items['network_path']), ('ok', 'ok', 'ok'))
+
+    def test_auto_update_toggle_and_daily_check(self):
+        self.assertFalse(self.api.update_prefs()['auto_update_check'])
+        self.assertIsNone(self.api._auto_check())                       # off: never checks
+        self.assertTrue(self.api.set_auto_update(True)['ok'])
+        self.api._clock = lambda: 10 ** 9
+        calls = []
+        self.api._update_check = lambda: calls.append(1) or {'ok': True, 'update': True, 'latest': '9.9.9', 'releases': []}
+        self.api._auto_check()
+        self.api._auto_check()                                          # second call within the day: skipped
+        self.assertEqual(len(calls), 1)
+        self.assertIn('9.9.9', self.api.snapshot(0)['notice'])
+        self.assertTrue(self.api.snapshot(0)['update_available'])
+
+    def test_install_needs_a_checked_update(self):
+        self.assertFalse(self.api.install_update()['ok'])
+
+    def test_source_run_opens_the_release_page_instead(self):
+        opened = []
+        self.api._frozen = False
+        self.api._open_url = lambda url: opened.append(url) or True
+        self.api._update = {'ok': True, 'update': True, 'latest': '9.9.9',
+                            'releases': [{'version': '9.9.9', 'page_url': PAGE_URL + '/tag/v9.9.9'}]}
+        self.assertTrue(self.api.install_update()['ok'])
+        self.assertEqual(opened, [PAGE_URL + '/tag/v9.9.9'])
+
+    def test_installed_app_downloads_starts_installer_then_exits(self):
+        steps = []
+        self.api._frozen = True
+        self.api._download = lambda release, folder: steps.append(('download', release['version'])) or Path('setup.exe')
+        self.api._start_install = lambda path: steps.append(('install', path))
+        closed = []
+        self.api._bind(object(), closed.append)
+        self.api._update = {'ok': True, 'update': True, 'latest': '9.9.9', 'releases': [{'version': '9.9.9'}]}
+        with patch.object(web.threading, 'Timer', lambda delay, fn, args=(): types.SimpleNamespace(start=lambda: fn(*args))):
+            self.assertTrue(self.api.install_update()['ok'])
+        self.assertEqual(steps, [('download', '9.9.9'), ('install', Path('setup.exe'))])
+        self.assertEqual(closed, ['exit'])
+
+    def test_failed_download_keeps_ccguard_running(self):
+        closed = []
+        self.api._frozen = True
+        self.api._bind(object(), closed.append)
+
+        def bad(release, folder):
+            raise RuntimeError('hash mismatch')
+        self.api._download = bad
+        self.api._update = {'ok': True, 'update': True, 'latest': '9.9.9', 'releases': [{'version': '9.9.9'}]}
+        result = self.api.install_update()
+        self.assertFalse(result['ok'])
+        self.assertIn('hash mismatch', result['message'])
+        self.assertEqual(closed, [])
+
+
+class Front(unittest.TestCase):
+    def test_bring_to_front_restores_raises_and_focuses(self):
+        calls = []
+        user32 = types.SimpleNamespace(**{name: (lambda name: lambda *a: calls.append((name,) + a) or 1)(name)
+                                          for name in ('ShowWindow', 'SetWindowPos', 'BringWindowToTop', 'SetForegroundWindow')})
+        self.assertTrue(web.bring_to_front(42, user32))
+        self.assertEqual([c[0] for c in calls], ['ShowWindow', 'SetWindowPos', 'SetWindowPos', 'BringWindowToTop',
+                                                  'SetForegroundWindow'])
+        self.assertEqual(calls[0], ('ShowWindow', 42, 9))
+        self.assertEqual((calls[1][2], calls[2][2]), (-1, -2))
+        self.assertFalse(web.bring_to_front(0, user32))
+
+    def test_quit_request_wins_over_reappearing(self):
+        source = (SCRIPTS / 'monitor_webview.py').read_text(encoding='utf-8')
+        watcher = source.split('def watcher():', 1)[1]
+        self.assertLess(watcher.index("if quit_path.exists():"), watcher.index("if show_path.exists():"))
+        tray_died = watcher.split("box['child'] = None", 1)[1]
+        self.assertLess(tray_died.index('if quit_path.exists():'), tray_died.index('window.show()'))
+        self.assertIn('quit_file=quit_path', source)
 
 
 class Closing(unittest.TestCase):

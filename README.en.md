@@ -39,6 +39,9 @@ CCGuard never contacts Claude and does not change system settings: the 10 checks
 | **Fix guidance** | Click any check card to see what it checks, the steps for the current result, its last 24 hours and the result code |
 | **Detection log** | Every check records which system query it read, what it saw and why it reached its state; listed under "检测过程" in the card detail, without IP addresses or file paths. See [how checks work](docs/monitor.md#principles) |
 | **Exit score** | On the "出口" page, see the current exit IP's trust score, type (residential / datacenter), location, network and VPN / proxy / abuse flags, from [ip.net.coffee](https://ip.net.coffee/claude/); open the full check page in your browser. The check never contacts Claude; see [exit score](docs/monitor.md#exit-score) |
+| **Claude background warning** | The Claude desktop app (MSIX) keeps running and online after its window is closed. The panel header and the "Claude" page show whether it is running, whether it has a window and how many Claude Code sessions it hosts, and can end all of its processes. Reads the process list only; never contacts Claude |
+| **Claude autostart** | Finds Claude's app startup task (StartupTask), registry Run values and Startup-folder shortcuts; enabled ones can be turned off from the panel, the same as "Disable" in Task Manager |
+| **Claude Code checklist** | 11 items based on [ip.net.coffee's guide to using Claude Code reliably](https://ip.net.coffee/claude/claudecode.html): exit IP, TLS fingerprint, DNS, IPv6, rule order, keep-alive and more. Items that local checks, the exit score and the proxy config can answer are judged automatically; the rest come with how to check them yourself |
 | **Window + tray + web** | WebView panel (default) / tkinter panel (fallback), tray notifications, local `127.0.0.1` web page as an alternative |
 | **System notifications** | Alerts on state transitions with cooldown and recovery notices; can be paused |
 | **Optional autostart** | A per-user Startup shortcut opens the panel hidden in the tray at login; off by default |
@@ -64,7 +67,7 @@ CCGuard never contacts Claude and does not change system settings: the 10 checks
 
 The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / proxy, or one in a region Claude does not serve carries more risk even when every local setting is correct.
 
-**CCGuard itself**: reads the local machine only, never changes firewall, routes or proxy config, needs no admin rights; monitoring stays offline, and the exit score and update check go online only when you click them, never contacting Claude; state, logs and notifications contain no IP addresses or file paths; autostart is off by default.
+**CCGuard itself**: reads the local machine only, never changes firewall, routes or proxy config, needs no admin rights; monitoring stays offline, and the exit score and update check go online only when you click them (or turn on the daily update check), never contacting Claude; state, logs and notifications contain no IP addresses or file paths; autostart is off by default.
 
 ## Quick start
 
@@ -75,9 +78,9 @@ The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / pr
 
 ### 2. Install
 
-**Installer (recommended)**: download [`CCGuard-Setup-0.6.1.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.6.1/CCGuard-Setup-0.6.1.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
+**Installer (recommended)**: download [`CCGuard-Setup-0.7.0.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
 
-The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.6.1.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
+The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.0.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
 
 **From source**: needs Python 3.10+ (the official installer normally includes tkinter). Download "Source code (zip)" from the release page or clone the repository:
 
@@ -269,7 +272,8 @@ Runtime config paths differ by client and version; always point to the file the 
 - **Fonts**: the installed app bundles Noto Sans SC (SIL OFL 1.1), so the UI looks the same on every machine regardless of installed fonts. The Python package ships no font files and picks from installed fonts: `Noto Sans SC` → `MiSans` → `HarmonyOS Sans SC` → Source Han Sans → `Microsoft YaHei UI` (ships with Windows). The Latin wordmark uses Anthropic Serif (if supplied) or Georgia, check codes Anthropic Mono / `Cascadia Mono` / `Consolas`.
 - **UI implementation**: `gui --ui auto` (default) prefers WebView and falls back to tkinter; `--ui web` is WebView only (error if unavailable), `--ui tk` is tkinter only.
 - **Closing the window**: with a tray, hide to tray, close, or cancel; without a tray, only close or cancel.
-- **Tray**: the shield changes colour with the overall state and shows the state on hover; transitions raise notifications with cooldown, and recovery is announced.
+- **Quitting from the tray**: "退出" in the tray menu asks first; once confirmed, monitoring, tray and panel all exit and the panel does not come back. "打开面板" brings the window to the front.
+- **Tray**: the menu renders sharply at any display scaling; the shield changes colour with the overall state and shows the state on hover; transitions raise notifications with cooldown, and recovery is announced.
 - **Web fallback**: `serve` listens on a random `127.0.0.1` port with a random session token, validates `Host`, `Origin` and `Sec-Fetch-Site`, and sends a strict CSP.
 - **Notification name**: the tray runs in PowerShell and shows "Windows PowerShell" by default. Run `register-notifier` once to have notifications signed as CCGuard; `unregister-notifier` removes it.
 - Focus Assist or Windows notification settings may suppress balloons; trust the panel.
@@ -303,7 +307,9 @@ scripts/
   monitor_history.py        state history (history.jsonl) and timelines
   monitor_guide.py          what each check looks at and how to fix it
   ip_score.py               manual exit score
-  app_update.py             manual update check and update log
+  app_update.py             update check, verified download and install, update log
+  claude_app.py             Claude desktop app status, close and autostart
+  claude_code_guide.py      Claude Code checklist
   version.py                version number (single source)
 assets/monitor/             panel pages, icons, tray script, update log
 packaging/                  CCGuard.exe entry, PyInstaller spec, Inno Setup script and Chinese wizard
@@ -315,8 +321,10 @@ docs/                       usage reference and design decisions
 ## Versions and updates
 
 - **Current version**: shown on the panel's "关于" (About) page, by `monitor.py --version`, and in `CCGuard.exe`'s file properties.
-- **Update check**: on the About page click "检查更新"; it reads this repository's published releases from GitHub (no drafts or pre-releases) and lists newer versions with their notes; "去下载" opens the installer or release page in your browser. It goes online only when clicked, contacts only GitHub, and never downloads or installs by itself. CLI: `monitor.py update-check`.
-- **Upgrading**: run the newer installer; it closes a running CCGuard first and keeps `monitor.json` and `history.jsonl`.
+- **Update check**: on the About page click "检查更新"; it reads this repository's published releases from GitHub (no drafts or pre-releases) and lists newer versions with their notes. It contacts only GitHub. CLI: `monitor.py update-check`.
+- **Automatic check (optional)**: tick "自动检查更新" on the About page to check at most once a day and show a notice in the panel when a new version is out. Off by default; stored in `prefs.json` next to the config.
+- **In-app install**: in the installed app, "下载并安装" asks first, downloads the installer from this repository's release, checks it against `SHA256SUMS-installer-*.txt` from the same release, and only then closes CCGuard, installs silently and reopens it. A hash mismatch stops the install. When run from source it opens the release page instead.
+- **Manual upgrade**: run the newer installer; it closes a running CCGuard first and keeps `monitor.json` and `history.jsonl`.
 - **Update log**: the About page lists each version's main changes (bundled, works offline); the full development record is [CHANGELOG.md](CHANGELOG.md).
 - **Numbering**: `major.minor.patch`; fixes bump the patch number, features bump the minor number. The version lives only in `scripts/version.py`, which the UI, CLI, exe properties and installer all read.
 
@@ -357,6 +365,7 @@ Report problems through [Issues](https://github.com/SumitaRinku/CCGuard/issues).
 ## Data sources and credits
 
 - The **exit score**'s trust score, IP type, location, network and risk flags come from the public API of [ip.net.coffee](https://ip.net.coffee/claude/); the score bands and restricted-region rule follow its Claude IP check page. Open that site in your browser for the full check (Claude exit IP, DNS and WebRTC leaks).
+- The **Claude Code checklist** items and their reasoning follow [ip.net.coffee's guide to using Claude Code reliably](https://ip.net.coffee/claude/claudecode.html), rewritten in our own words; the panel links to the original.
 - The **exit IP** comes from Cloudflare's `1.1.1.1/cdn-cgi/trace`.
 - The installed app's UI font is [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) (Adobe and Google, SIL Open Font License 1.1), downloaded at build time from a fixed commit of [google/fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc) with its hash checked; the license text ships with the app (`_internal\ccguard\assets\monitor\fonts\OFL.txt` in the install folder).
 - The installer wizard's Simplified Chinese translation is the community translation carried in the official Inno Setup repository ([jrsoftware/issrc](https://github.com/jrsoftware/issrc), `Files/Languages/Unofficial/ChineseSimplified.isl`, maintained by Kira), kept with its credits.

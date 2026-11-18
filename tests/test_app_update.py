@@ -135,6 +135,89 @@ class Check(unittest.TestCase):
             self.assertFalse(update.allowed_url(bad), bad)
 
 
+class Install(unittest.TestCase):
+    NAME = 'CCGuard-Setup-0.9.0.exe'
+    DATA = b'installer bytes'
+
+    def release(self, **extra):
+        base = PAGE + '/download/v0.9.0/'
+        entry = {'version': '0.9.0', 'installer_url': base + self.NAME, 'sums_url': base + 'SHA256SUMS-installer-0.9.0.txt'}
+        entry.update(extra)
+        return entry
+
+    def fake(self, data=None, sums=None):
+        import hashlib
+        digest = hashlib.sha256(self.DATA).hexdigest()
+        sums = sums if sums is not None else ('%s  %s\n' % (digest, self.NAME)).encode()
+        calls = []
+
+        def download(url, limit=None):
+            calls.append(url)
+            return sums if url.endswith('.txt') else (data if data is not None else self.DATA)
+        download.calls = calls
+        return download
+
+    def test_check_lists_the_checksum_file(self):
+        item = release('v0.9.0')
+        item['assets'].append({'name': 'SHA256SUMS-installer-0.9.0.txt', 'browser_download_url': PAGE + '/download/v0.9.0/SHA256SUMS-installer-0.9.0.txt'})
+        top = update.check(get=fake([item]), current='0.6.0')['releases'][0]
+        self.assertEqual(top['sums_url'], PAGE + '/download/v0.9.0/SHA256SUMS-installer-0.9.0.txt')
+
+    def test_verified_download(self):
+        with tempfile.TemporaryDirectory() as folder:
+            download = self.fake()
+            path = update.download_installer(self.release(), folder, download=download)
+            self.assertEqual(path.read_bytes(), self.DATA)
+            self.assertEqual(path.name, self.NAME)
+            self.assertEqual(len(download.calls), 2)
+
+    def test_hash_mismatch_is_refused_and_nothing_kept(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(update.UpdateError):
+                update.download_installer(self.release(), folder, download=self.fake(data=b'tampered'))
+            self.assertEqual(list(Path(folder).iterdir()), [])
+
+    def test_only_this_repositorys_installer(self):
+        for bad in (self.release(installer_url='https://evil.example/CCGuard-Setup-0.9.0.exe'),
+                    self.release(sums_url=None),
+                    self.release(installer_url=PAGE + '/download/v0.9.0/other.exe')):
+            with tempfile.TemporaryDirectory() as folder, self.assertRaises(update.UpdateError):
+                update.download_installer(bad, folder, download=self.fake())
+
+    def test_sums_must_name_the_file(self):
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(update.UpdateError):
+            update.download_installer(self.release(), folder, download=self.fake(sums=b'abc  other.exe\n'))
+
+    def test_installer_waits_for_ccguard_then_runs_silently_and_relaunches(self):
+        command = update.install_command(r"C:\Users\o'brien\CCGuard-Setup-0.9.0.exe", 4242)
+        self.assertEqual(command[0], 'powershell.exe')
+        script = command[-1]
+        self.assertTrue(script.startswith('Wait-Process -Id 4242'))
+        self.assertIn("'C:\\Users\\o''brien\\CCGuard-Setup-0.9.0.exe'", script)
+        for flag in ("'/SILENT'", "'/SUPPRESSMSGBOXES'", "'/NORESTART'", "'/RELAUNCH'"):
+            self.assertIn(flag, script)
+
+
+class Prefs(unittest.TestCase):
+    def test_defaults_save_and_due(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'prefs.json'
+            self.assertEqual(update.load_prefs(path), {'auto_update_check': False, 'last_update_check': 0})
+            update.save_prefs(path, {'auto_update_check': True, 'last_update_check': 100})
+            prefs = update.load_prefs(path)
+            self.assertEqual(prefs, {'auto_update_check': True, 'last_update_check': 100})
+            self.assertFalse(update.auto_check_due(prefs, 100 + update.AUTO_INTERVAL - 1))
+            self.assertTrue(update.auto_check_due(prefs, 100 + update.AUTO_INTERVAL))
+            self.assertFalse(update.auto_check_due(dict(prefs, auto_update_check=False), 10 ** 10))
+            path.write_text('[1, 2]', encoding='utf-8')
+            self.assertFalse(update.load_prefs(path)['auto_update_check'])
+            path.write_text('{"auto_update_check": "yes"}', encoding='utf-8')
+            self.assertFalse(update.load_prefs(path)['auto_update_check'])
+
+    def test_prefs_live_next_to_the_config(self):
+        self.assertEqual(update.prefs_path(Path('x') / 'monitor.json').name, 'prefs.json')
+
+
 class Cli(unittest.TestCase):
     def test_update_check_exit_code_follows_result(self):
         with patch.object(update, 'check', return_value={'ok': True}), patch('sys.stdout'):

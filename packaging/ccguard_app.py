@@ -27,7 +27,7 @@ def self_test(output):
     report = {'frozen': monitor.FROZEN, 'version': __version__, 'checks': {}}
     checks = report['checks']
     for name in ('monitor_webview', 'monitor_gui', 'monitor_history', 'monitor_guide', 'ip_score', 'app_update',
-                 'version', 'webview', 'tkinter'):
+                 'version', 'claude_app', 'claude_code_guide', 'webview', 'tkinter'):
         try:
             __import__(name)
             checks['import ' + name] = True

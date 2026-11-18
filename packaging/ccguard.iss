@@ -64,7 +64,15 @@ Name: "{userdesktop}\CCGuard"; Filename: "{app}\CCGuard.exe"; WorkingDir: "{app}
 
 [Run]
 Filename: "{app}\CCGuard.exe"; Description: "{cm:LaunchProgram,CCGuard}"; Flags: nowait postinstall skipifsilent
+; In-app update: CCGuard runs this installer with /SILENT /RELAUNCH after it exits, so start it again.
+Filename: "{app}\CCGuard.exe"; Flags: nowait; Check: ShouldRelaunch
 
 [UninstallDelete]
 ; Created by the panel's optional autostart switch.
 Type: files; Name: "{userstartup}\CCGuard.lnk"
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := WizardSilent and (Pos('/RELAUNCH', UpperCase(GetCmdTail)) > 0);
+end;

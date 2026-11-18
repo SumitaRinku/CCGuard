@@ -107,6 +107,19 @@ class BundledFont(unittest.TestCase):
         self.assertIn('/assets/monitor/fonts/', ignored)
 
 
+class InAppUpdate(unittest.TestCase):
+    def test_silent_update_relaunches_only_when_asked(self):
+        self.assertIn('Filename: "{app}\\CCGuard.exe"; Flags: nowait; Check: ShouldRelaunch', ISS)
+        code = ISS.split('[Code]', 1)[1]
+        self.assertIn("WizardSilent and (Pos('/RELAUNCH', UpperCase(GetCmdTail)) > 0)", code)
+
+    def test_new_modules_are_bundled_and_self_tested(self):
+        source = (ROOT / 'packaging/ccguard_app.py').read_text(encoding='utf-8')
+        for name in ("'claude_app'", "'claude_code_guide'"):
+            self.assertIn(name, SPEC)
+            self.assertIn(name, source)
+
+
 class InstallerAgreesWithTheApp(unittest.TestCase):
     def test_per_user_install_without_admin(self):
         self.assertIn('PrivilegesRequired=lowest', ISS)

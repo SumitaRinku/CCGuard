@@ -185,9 +185,58 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 - **与浏览器页的差别：**这里评的是 Cloudflare 看到的出口。若代理规则让 claude.ai 走另一个节点，Claude 看到的出口可能不同；以浏览器打开的详情页为准。
 - **检测过程**列出每个请求、返回的节点和地区、得分与标记；请求失败时写明原因。
 
+<a id="claude-app"></a>
+## Claude 运行状态与开机自启
+
+Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉窗口后通常仍在后台运行，Claude Code 会话也由它托管。以为它已经退出、随后关掉代理或切换网络，后台的 Claude 就会用新网络连出去。
+
+- **运行状态**：每 5 秒读一次进程列表（Toolhelp 快照 + 进程映像路径），路径在 `\WindowsApps\Claude_` 或经典安装的 `\AnthropicClaude\` 下的算 Claude 桌面版，路径含 `\claude-code\` 的子进程算 Claude Code 会话；再看这些进程有没有可见窗口。没有窗口但在运行时，面板顶部显示“Claude 后台运行”，侧栏“Claude”页标出“后台”。只看进程，不连接 Claude，不读它的数据。单独安装的 Claude Code 命令行不在其中。
+- **关闭**：确认后对 Claude 的根进程执行 `taskkill /T /F`，结束整棵进程树，包括它托管的 Claude Code 会话。未保存的输入会丢失。
+- **开机自启**：查三处，只列名字含 Claude 或 Anthropic 的项：
+  1. MSIX 应用启动任务：`HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\<包名>\<任务名>` 的 `State`（0 已禁用、1 用户已禁用、2 已启用、3 策略禁用、4 策略启用）。关闭时写 `State=1`，与“设置 → 应用 → 启动”里关掉开关相同；3、4 由组策略控制，不改。
+  2. `HKCU\...\CurrentVersion\Run` 里的值。
+  3. 当前用户启动文件夹里的快捷方式。
+  后两项关闭时在 `StartupApproved` 里写入“已禁用”标记，与任务管理器的“禁用”相同，原条目保留，可在任务管理器里重新启用。“打开系统启动设置”直接跳到“设置 → 应用 → 启动”。
+
+<a id="claude-code-checklist"></a>
+## Claude Code 检查清单
+
+条目参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，共 11 项。每项写明为什么、怎么做，能判断的给出“正常／需处理／未知”，不能从本机判断的标“自查”。
+
+| 项 | 依据 |
+| --- | --- |
+| 出口 IP 类型与地区 | 出口评分：住宅、无 VPN／代理标记、地区可用为正常 |
+| 出口 IP 固定 | 自查；出口评分为机房或有标记时提示 |
+| 只走 TCP | 自查（关闭节点的 UDP／QUIC） |
+| TLS 指纹 | 代理配置的 `global-client-fingerprint` 或节点的 `client-fingerprint` |
+| DNS 走代理 | DNS 接管与网卡 DNS 两项检查 |
+| 关闭 IPv6 | 核心 IPv6 与系统 IPv6 两项检查 |
+| Claude 分流规则 | 配置里有没有 claude.ai／anthropic.com 规则，是否指向 DIRECT |
+| 规则顺序 | Claude 规则是否排在 GEOIP、GEOSITE、MATCH 等大范围规则之前 |
+| 长连接 | `disable-keep-alive` 没有打开 |
+| 并发与使用节奏 | 自查 |
+| 流量路径 | 10 项本机检查是否全部正常 |
+
+只读取 Clash／Mihomo 格式的运行配置，结果里只有模式、计数和规则序号，不含节点名、分组名、地址和凭据。
+
+<a id="tray-quit"></a>
+## 托盘退出与打开面板
+
+- 托盘菜单“退出”先弹出确认；确认后托盘写一个退出请求文件，面板收到后连同监测一起退出，不会再自动恢复窗口。只是托盘进程意外退出时，面板仍会重新显示，避免没有任何入口。
+- “打开面板”会恢复最小化的窗口并把它放到最前面。
+- 托盘进程按每显示器 DPI 感知运行，高分屏下菜单文字清晰。
+
+<a id="updates"></a>
+## 检查更新与安装
+
+- 手动：“关于”页点“检查更新”，只读 GitHub 上本仓库的发布列表。
+- 自动（可选，默认关闭）：勾选后每天最多检查一次，时间记在配置旁的 `prefs.json`，有新版本时面板顶部提示。
+- 安装（仅安装版）：点“下载并安装”并确认后，从本仓库 Release 下载 `CCGuard-Setup-<版本>.exe` 和 `SHA256SUMS-installer-<版本>.txt`，哈希一致才运行；CCGuard 先退出，安装程序以 `/SILENT /RELAUNCH` 静默覆盖安装后重新打开 CCGuard。只接受本仓库发布页下的地址和规范的文件名，哈希不符时删除下载、不安装。安装程序存放在配置旁的 `updates` 目录。
+
 ## 不做的事
 
 - 不改防火墙、路由和代理配置，不重启代理核心；修复按卡片里的步骤由你操作。
+- 只在你确认时结束 Claude 进程或关闭它的开机自启；不启动、不登录 Claude，不读它的数据。
 - 不读取代理节点、订阅链接与凭据。
 - 只在你开启时写开机自启（当前用户 Startup 里一个快捷方式）和通知署名用的开始菜单入口，都可撤销。
 
