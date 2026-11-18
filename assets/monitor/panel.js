@@ -120,6 +120,8 @@ function bind() {
   let openKey = '';
   let fitted = false;
 
+  Promise.resolve(api().about()).then(about => { $('brand-version').textContent = 'v' + about.version; }, () => {});
+
   function toast(text) {
     const node = $('toast');
     node.textContent = text;
