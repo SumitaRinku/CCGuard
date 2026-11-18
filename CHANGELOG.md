@@ -4,6 +4,7 @@
 
 ## 0.7.4（2026-11-18）
 
+- 发布：本仓库 `v0.7.4`（提交 `dfbb630`）。`CCGuard-Setup-0.7.4.exe` SHA-256 `9843d23affa15b365502b125b6f52e67fc6d2e8350d8b4a32233bb81b8cf399b`，另附 `SHA256SUMS-installer-0.7.4.txt`；下载回的资产哈希一致。发布构建通过打包自检、静默安装、安装后自检、静默卸载；推送 CI 通过。
 - Claude 页写明建议使用 Claude 桌面版（Desktop），不建议使用命令行版 Claude Code（CLI）。
 - 开机自启列表不再列出 `CoworkVMService`（按用户决定不管它的开机启动）；关闭 Claude 时仍会停止该服务。
 - 出口页信息更详细：地区核对、运营商类型与名称、逐项风险标记、滥用评分、反向解析域名、RPKI、出口时区与本机时区对比、Cloudflare 节点与 TLS／HTTP 版本。反向解析去掉含 IP 的主机名，网段不显示；测试检查结果里不含 IP。
