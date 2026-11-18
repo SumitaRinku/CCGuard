@@ -1,7 +1,11 @@
 """Update check and in-app install for CCGuard; contacts only GitHub, never Claude or Anthropic.
 
 Check: one request to https://api.github.com/repos/SumitaRinku/CCGuard/releases, on the user's click
-or, when the user turned it on, at most once a day. Install (installed app only, on the user's
+or, when the user turned it on, at most once a day. Without a login GitHub allows 60 API requests an
+hour per IP, and a proxy exit IP is shared by many people, so when the API refuses (rate limit or any
+other error) the check falls back to plain github.com pages that are not API-limited: the
+/releases/latest redirect names the newest tag, and that tag's bundled release-notes.json (read from
+raw.githubusercontent.com) gives the notes. Install (installed app only, on the user's
 click): download the release's installer and its SHA256SUMS file from this repository's release,
 verify the hash, then run the installer silently after CCGuard has exited; it relaunches CCGuard.
 """
@@ -20,6 +24,8 @@ from version import __version__
 REPO = 'SumitaRinku/CCGuard'
 RELEASES_API = 'https://api.github.com/repos/%s/releases?per_page=20' % REPO
 RELEASES_PAGE = 'https://github.com/%s/releases' % REPO
+LATEST_PAGE = RELEASES_PAGE + '/latest'
+NOTES_RAW = 'https://raw.githubusercontent.com/%s/v%%s/assets/monitor/release-notes.json' % REPO
 TIMEOUT = 10
 DOWNLOAD_TIMEOUT = 120
 MAX_INSTALLER = 200 * 1024 * 1024
@@ -69,7 +75,93 @@ def http_get(url):
         return response.status, response.read(4 * 1024 * 1024)
 
 
-def check(get=http_get, current=__version__, clock=time.time):
+def http_final_url(url):
+    """Where a github.com URL redirects to (HEAD request, redirects followed)."""
+    request = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'CCGuard/' + __version__})
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        return response.geturl()
+
+
+def _api_reason(error):
+    """Readable reason for an API failure; GitHub's unauthenticated limit gets a plain explanation."""
+    code = getattr(error, 'code', None)
+    if code in (403, 429):
+        return 'GitHub 接口限流（未登录时同一 IP 每小时 60 次，代理出口 IP 常被多人共用）'
+    return str(getattr(error, 'reason', None) or error)
+
+
+def _from_api(get, mine, note):
+    note('请求 ' + RELEASES_API + '，读取已发布的版本')
+    status, body = get(RELEASES_API)
+    if status != 200:
+        raise UpdateError('GitHub 返回 HTTP %s' % status)
+    try:
+        items = json.loads(body.decode('utf-8'))
+    except ValueError:
+        raise UpdateError('GitHub 返回的不是 JSON') from None
+    if not isinstance(items, list):
+        raise UpdateError('GitHub 返回格式不对')
+    newer = []
+    for item in items:
+        if not isinstance(item, dict) or item.get('draft') or item.get('prerelease'):
+            continue
+        number = parse_version(item.get('tag_name'))
+        if number is None or number <= mine:
+            continue
+        assets = [asset for asset in item.get('assets') or [] if isinstance(asset, dict)]
+        installer = next((asset.get('browser_download_url') for asset in assets
+                          if str(asset.get('name', '')).startswith('CCGuard-Setup-')
+                          and str(asset.get('name', '')).endswith('.exe')), None)
+        sums = next((asset.get('browser_download_url') for asset in assets
+                     if str(asset.get('name', '')).startswith('SHA256SUMS-installer-')), None)
+        page = item.get('html_url')
+        newer.append({'number': number, 'version': '.'.join(map(str, number)),
+                      'name': str(item.get('name') or item.get('tag_name')),
+                      'date': str(item.get('published_at') or '')[:10],
+                      'page_url': page if allowed_url(page) else RELEASES_PAGE,
+                      'installer_url': installer if allowed_url(installer) else None,
+                      'sums_url': sums if allowed_url(sums) else None,
+                      'notes': plain_notes(item.get('body'))})
+    return newer
+
+
+def _release_entry(number, date='', notes=()):
+    version = '.'.join(map(str, number))
+    base = '%s/download/v%s/' % (RELEASES_PAGE, version)
+    return {'number': number, 'version': version, 'name': 'CCGuard v' + version, 'date': date,
+            'page_url': '%s/tag/v%s' % (RELEASES_PAGE, version),
+            'installer_url': base + 'CCGuard-Setup-%s.exe' % version,
+            'sums_url': base + 'SHA256SUMS-installer-%s.txt' % version,
+            'notes': [str(item) for item in notes][:20]}
+
+
+def _from_pages(get, resolve, mine, note):
+    """Fallback without the API: newest tag from the /releases/latest redirect, notes from that tag."""
+    note('改为读取 ' + LATEST_PAGE + ' 的跳转，确定最新版本')
+    final = resolve(LATEST_PAGE)
+    match = re.fullmatch(re.escape(RELEASES_PAGE) + r'/tag/(v\d+\.\d+\.\d+)', str(final or ''))
+    latest = parse_version(match.group(1)) if match else None
+    if latest is None:
+        raise UpdateError('发布页没有给出最新版本')
+    if latest <= mine:
+        return []
+    entries = {latest: _release_entry(latest)}
+    url = NOTES_RAW % '.'.join(map(str, latest))
+    note('读取该版本附带的更新日志 ' + url)
+    try:
+        status, body = get(url)
+        data = json.loads(body.decode('utf-8')) if status == 200 else []
+    except (urllib.error.URLError, OSError, ValueError):
+        data = []
+        note('更新日志没有读到，只显示版本号')
+    for entry in data if isinstance(data, list) else []:
+        number = parse_version(entry.get('version')) if isinstance(entry, dict) else None
+        if number and mine < number <= latest and isinstance(entry.get('items'), list):
+            entries[number] = _release_entry(number, str(entry.get('date') or '')[:10], entry['items'])
+    return list(entries.values())
+
+
+def check(get=http_get, current=__version__, clock=time.time, resolve=http_final_url):
     """Newer published releases than `current`, newest first; never raises."""
     log = []
 
@@ -82,37 +174,11 @@ def check(get=http_get, current=__version__, clock=time.time):
         mine = parse_version(current)
         if mine is None:
             raise UpdateError('当前版本号无法识别：%s' % current)
-        note('请求 ' + RELEASES_API + '，读取已发布的版本')
-        status, body = get(RELEASES_API)
-        if status != 200:
-            raise UpdateError('GitHub 返回 HTTP %s' % status)
         try:
-            items = json.loads(body.decode('utf-8'))
-        except ValueError:
-            raise UpdateError('GitHub 返回的不是 JSON') from None
-        if not isinstance(items, list):
-            raise UpdateError('GitHub 返回格式不对')
-        newer = []
-        for item in items:
-            if not isinstance(item, dict) or item.get('draft') or item.get('prerelease'):
-                continue
-            number = parse_version(item.get('tag_name'))
-            if number is None or number <= mine:
-                continue
-            assets = [asset for asset in item.get('assets') or [] if isinstance(asset, dict)]
-            installer = next((asset.get('browser_download_url') for asset in assets
-                              if str(asset.get('name', '')).startswith('CCGuard-Setup-')
-                              and str(asset.get('name', '')).endswith('.exe')), None)
-            sums = next((asset.get('browser_download_url') for asset in assets
-                         if str(asset.get('name', '')).startswith('SHA256SUMS-installer-')), None)
-            page = item.get('html_url')
-            newer.append({'number': number, 'version': '.'.join(map(str, number)),
-                          'name': str(item.get('name') or item.get('tag_name')),
-                          'date': str(item.get('published_at') or '')[:10],
-                          'page_url': page if allowed_url(page) else RELEASES_PAGE,
-                          'installer_url': installer if allowed_url(installer) else None,
-                          'sums_url': sums if allowed_url(sums) else None,
-                          'notes': plain_notes(item.get('body'))})
+            newer = _from_api(get, mine, note)
+        except (UpdateError, urllib.error.URLError, OSError, ValueError) as error:
+            note('GitHub 接口没有返回：%s' % _api_reason(error), False)
+            newer = _from_pages(get, resolve, mine, note)
         newer.sort(key=lambda entry: entry['number'], reverse=True)
         for entry in newer:
             entry.pop('number')
@@ -120,9 +186,8 @@ def check(get=http_get, current=__version__, clock=time.time):
                       latest=newer[0]['version'] if newer else current)
         note('发现新版本 %s' % newer[0]['version'] if newer else '已是最新版本 %s' % current, True if not newer else None)
     except (UpdateError, urllib.error.URLError, OSError, ValueError) as error:
-        reason = getattr(error, 'reason', None) or error
-        result['error'] = str(reason)
-        note('检查失败：%s' % reason, False)
+        result['error'] = _api_reason(error)
+        note('检查失败：%s' % result['error'], False)
     return result
 
 

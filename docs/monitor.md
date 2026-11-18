@@ -230,7 +230,7 @@ Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉�
 <a id="updates"></a>
 ## 检查更新与安装
 
-- 手动：“关于”页点“检查更新”，只读 GitHub 上本仓库的发布列表。
+- 手动：“关于”页点“检查更新”，只读 GitHub 上本仓库的发布列表。GitHub 接口未登录时同一 IP 每小时只给 60 次，代理出口 IP 常被多人共用，可能返回 “rate limit exceeded”；这时改读不受该限制的普通页面：`github.com/SumitaRinku/CCGuard/releases/latest` 的跳转给出最新版本号，该版本附带的 `release-notes.json`（raw.githubusercontent.com）给出更新日志，安装程序和校验文件按发布的固定文件名下载，照样校验 SHA-256。
 - 自动（可选，默认关闭）：勾选后每天最多检查一次，时间记在配置旁的 `prefs.json`，有新版本时面板顶部提示。
 - 安装（仅安装版）：点“下载并安装”并确认后，从本仓库 Release 下载 `CCGuard-Setup-<版本>.exe` 和 `SHA256SUMS-installer-<版本>.txt`，哈希一致才运行；CCGuard 先退出，安装程序以 `/SILENT /RELAUNCH` 静默覆盖安装后重新打开 CCGuard。只接受本仓库发布页下的地址和规范的文件名，哈希不符时删除下载、不安装。安装程序存放在配置旁的 `updates` 目录。
 

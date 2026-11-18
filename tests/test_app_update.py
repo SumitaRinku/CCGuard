@@ -106,13 +106,50 @@ class Check(unittest.TestCase):
         self.assertIsNone(top['installer_url'])
 
     def test_failures_are_reported_not_raised(self):
+        def offline(url):
+            raise urllib.error.URLError('offline')
         for get in (fake(urllib.error.URLError('offline')), fake(TimeoutError('slow')), fake([], status=403),
                     fake(b'<html>'), fake({'message': 'rate limited'})):
-            result = update.check(get=get, current='0.6.0')
+            result = update.check(get=get, current='0.6.0', resolve=offline)
             self.assertFalse(result['ok'])
             self.assertTrue(result['error'])
             self.assertTrue(result['log'][-1]['text'].startswith('检查失败'))
         self.assertFalse(update.check(get=fake([]), current='dev')['ok'])
+
+    def test_rate_limited_api_falls_back_to_release_pages(self):
+        notes = json.dumps([{'version': '0.9.0', 'date': '2026-12-01', 'items': ['新功能']},
+                            {'version': '0.8.0', 'date': '2026-11-30', 'items': ['修复']},
+                            {'version': '0.6.0', 'date': '2026-11-17', 'items': ['旧']}]).encode()
+        asked = []
+
+        def get(url):
+            asked.append(url)
+            if url == update.RELEASES_API:
+                raise urllib.error.HTTPError(url, 403, 'rate limit exceeded', {}, None)
+            return 200, notes
+        result = update.check(get=get, current='0.6.0', clock=lambda: 0,
+                              resolve=lambda url: asked.append(url) or PAGE + '/tag/v0.9.0')
+        self.assertTrue(result['ok'])
+        self.assertEqual(asked, [update.RELEASES_API, update.LATEST_PAGE,
+                                 'https://raw.githubusercontent.com/SumitaRinku/CCGuard/v0.9.0/assets/monitor/release-notes.json'])
+        self.assertEqual([r['version'] for r in result['releases']], ['0.9.0', '0.8.0'])
+        top = result['releases'][0]
+        self.assertEqual(top['installer_url'], PAGE + '/download/v0.9.0/CCGuard-Setup-0.9.0.exe')
+        self.assertEqual(top['sums_url'], PAGE + '/download/v0.9.0/SHA256SUMS-installer-0.9.0.txt')
+        self.assertEqual((top['page_url'], top['notes'], top['date']), (PAGE + '/tag/v0.9.0', ['新功能'], '2026-12-01'))
+        self.assertTrue(all(update.allowed_url(top[key]) for key in ('installer_url', 'sums_url', 'page_url')))
+        self.assertIn('每小时 60 次', ' '.join(row['text'] for row in result['log']))
+
+    def test_fallback_without_notes_and_when_up_to_date(self):
+        def get(url):
+            raise urllib.error.HTTPError(url, 429, 'too many', {}, None)
+        result = update.check(get=get, current='0.6.0', resolve=lambda url: PAGE + '/tag/v0.9.0')
+        self.assertEqual([(r['version'], r['notes']) for r in result['releases']], [('0.9.0', [])])
+        same = update.check(get=get, current='0.9.0', resolve=lambda url: PAGE + '/tag/v0.9.0')
+        self.assertEqual((same['ok'], same['update']), (True, False))
+        odd = update.check(get=get, current='0.6.0', resolve=lambda url: 'https://evil.example/tag/v9.9.9')
+        self.assertFalse(odd['ok'])
+        self.assertIn('60 次', odd['error'] + ' '.join(row['text'] for row in odd['log']))
 
     def test_only_github_is_contacted(self):
         self.assertTrue(update.RELEASES_API.startswith('https://api.github.com/repos/SumitaRinku/CCGuard/'))
