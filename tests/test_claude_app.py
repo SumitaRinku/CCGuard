@@ -52,15 +52,92 @@ class Close(unittest.TestCase):
         def run(argv, **kwargs):
             calls.append(argv)
             return subprocess.CompletedProcess(argv, 0)
-        self.assertEqual(claude.close(PROCESSES, run=run), {'closed': 1})
+        self.assertEqual(claude.close(PROCESSES, run=run), {'closed': 1, 'helpers': 0, 'services': 0})
         self.assertEqual(calls, [['taskkill', '/PID', '100', '/T', '/F']])
 
     def test_nothing_running_does_nothing(self):
-        self.assertEqual(claude.close([(1, 0, 'explorer.exe')], run=lambda *a, **k: self.fail()), {'closed': 0})
+        self.assertEqual(claude.close([(1, 0, 'explorer.exe')], run=lambda *a, **k: self.fail()),
+                         {'closed': 0, 'helpers': 0, 'services': 0})
 
     def test_failure_is_reported(self):
         with self.assertRaises(claude.ClaudeAppError):
             claude.close(PROCESSES, run=lambda argv, **k: subprocess.CompletedProcess(argv, 1))
+
+
+SERVICE_PATH = r'"C:\Program Files\WindowsApps\Claude_5.1_x64__pzs8sxrjxfjjc\app\resources\cowork-svc.exe"'
+SERVICE = {'name': 'CoworkVMService', 'state': 'running', 'start': 'auto', 'path': SERVICE_PATH}
+
+
+def ok_run(calls):
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+    return run
+
+
+class Service(unittest.TestCase):
+    def test_only_services_inside_the_claude_package_count(self):
+        impostor = dict(SERVICE, path=r'C:\Tools\cowork-svc.exe')
+        other = dict(SERVICE, name='Spooler')
+        self.assertEqual(claude.claude_services([SERVICE, impostor, other]), [SERVICE])
+
+    def test_running_service_alone_means_claude_is_still_in_the_background(self):
+        state = claude.status([(1, 0, 'explorer.exe')], window_pids=set(), services=[SERVICE])
+        self.assertEqual((state['running'], state['background'], state['services'], state['processes']),
+                         (True, True, 1, 0))
+        stopped = claude.status([(1, 0, 'explorer.exe')], window_pids=set(), services=[dict(SERVICE, state='stopped')])
+        self.assertFalse(stopped['running'])
+
+    def test_packaged_helpers_by_package_identity(self):
+        families = {100: 'Claude_pzs8sxrjxfjjc', 300: 'Claude_pzs8sxrjxfjjc', 301: 'Microsoft.LockApp_cw5n1h2txyewy', 4: 'Claude_x'}
+        processes = PROCESSES + [(300, 2, 'RuntimeBroker.exe'), (301, 2, 'RuntimeBroker.exe'), (4, 0, 'System')]
+        self.assertEqual(claude.packaged_pids(processes, family=lambda pid: families.get(pid, '')), [100, 300])
+
+    def test_close_ends_tree_then_helpers_then_stops_the_service(self):
+        calls = []
+        result = claude.close(PROCESSES, run=ok_run(calls), packaged=[100, 101, 300], services=[SERVICE])
+        self.assertEqual(result, {'closed': 1, 'helpers': 1, 'services': 1})
+        self.assertEqual(calls, [['taskkill', '/PID', '100', '/T', '/F'], ['taskkill', '/PID', '300', '/T', '/F'],
+                                 ['sc.exe', 'stop', 'CoworkVMService']])
+
+    def test_service_only_close_and_already_stopped(self):
+        calls = []
+        self.assertEqual(claude.close([(1, 0, 'explorer.exe')], run=ok_run(calls), services=[SERVICE])['services'], 1)
+        self.assertEqual(calls, [['sc.exe', 'stop', 'CoworkVMService']])
+        result = claude.close([(1, 0, 'explorer.exe')], services=[SERVICE],
+                              run=lambda argv, **k: subprocess.CompletedProcess(argv, 1062))
+        self.assertEqual(result['services'], 1)
+
+    def test_service_stop_failure_is_reported(self):
+        with self.assertRaises(claude.ClaudeAppError):
+            claude.close([(1, 0, 'explorer.exe')], services=[SERVICE],
+                         run=lambda argv, **k: subprocess.CompletedProcess(argv, 5))
+
+    def test_autostart_lists_the_boot_service(self):
+        entries = claude.autostart(registry(0), startup_folder=Path(tempfile.gettempdir()) / 'none', services=[SERVICE])
+        self.assertEqual(entries[0], {'id': 'service:CoworkVMService', 'kind': 'service',
+                                      'name': 'CoworkVMService（系统服务，开机启动）', 'enabled': True,
+                                      'locked': False, 'admin': True})
+        manual = claude.autostart(registry(0), startup_folder=Path(tempfile.gettempdir()) / 'none',
+                                  services=[dict(SERVICE, start='demand')])
+        self.assertFalse(manual[0]['enabled'])
+
+    def test_disable_service_asks_windows_for_admin_and_sets_manual(self):
+        calls = []
+        claude.disable_autostart('service:CoworkVMService', run=ok_run(calls), services=[SERVICE])
+        script = calls[0][-1]
+        self.assertIn("'config','CoworkVMService','start=','demand'", script)
+        self.assertIn('-Verb RunAs', script)
+        self.assertIn('exit $p.ExitCode', script)
+
+    def test_disable_service_refusals(self):
+        with self.assertRaises(claude.ClaudeAppError):   # declined at the administrator prompt
+            claude.disable_autostart('service:CoworkVMService', services=[SERVICE],
+                                     run=lambda argv, **k: subprocess.CompletedProcess(argv, 1))
+        for entry_id, services in (('service:Spooler', [dict(SERVICE, name='Spooler')]),
+                                   ('service:CoworkVMService', [dict(SERVICE, path=r'C:\x\cowork-svc.exe')])):
+            with self.assertRaises(claude.ClaudeAppError, msg=entry_id):
+                claude.disable_autostart(entry_id, run=lambda *a, **k: self.fail(), services=services)
 
 
 class FakeRegistry:

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.7.1",
+    "date": "2026-11-18",
+    "items": [
+      "关闭 Claude 时一并结束它的附属进程（如 RuntimeBroker），并停止 Claude 的后台服务 CoworkVMService",
+      "检测到 CoworkVMService 设为开机自动启动时列入开机自启，可改为手动启动（需管理员确认一次）",
+      "面板默认窗口更大，Claude、历史、日志等页面显示更多内容"
+    ]
+  },
+  {
     "version": "0.7.0",
     "date": "2026-11-18",
     "items": [

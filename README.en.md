@@ -39,8 +39,8 @@ CCGuard never contacts Claude and does not change system settings: the 10 checks
 | **Fix guidance** | Click any check card to see what it checks, the steps for the current result, its last 24 hours and the result code |
 | **Detection log** | Every check records which system query it read, what it saw and why it reached its state; listed under "检测过程" in the card detail, without IP addresses or file paths. See [how checks work](docs/monitor.md#principles) |
 | **Exit score** | On the "出口" page, see the current exit IP's trust score, type (residential / datacenter), location, network and VPN / proxy / abuse flags, from [ip.net.coffee](https://ip.net.coffee/claude/); open the full check page in your browser. The check never contacts Claude; see [exit score](docs/monitor.md#exit-score) |
-| **Claude background warning** | The Claude desktop app (MSIX) keeps running and online after its window is closed. The panel header and the "Claude" page show whether it is running, whether it has a window and how many Claude Code sessions it hosts, and can end all of its processes. Reads the process list only; never contacts Claude |
-| **Claude autostart** | Finds Claude's app startup task (StartupTask), registry Run values and Startup-folder shortcuts; enabled ones can be turned off from the panel, the same as "Disable" in Task Manager |
+| **Claude background warning** | The Claude desktop app (MSIX) keeps running and online after its window is closed. The panel header and the "Claude" page show whether it is running, whether it has a window and how many Claude Code sessions it hosts, and can end all of its processes and stop its background service CoworkVMService. Reads process and service status only; never contacts Claude |
+| **Claude autostart** | Finds Claude's app startup task (StartupTask), registry Run values, Startup-folder shortcuts and the CoworkVMService service set to start at boot; enabled ones can be turned off from the panel (the service is switched to manual start after one administrator prompt) |
 | **Claude Code checklist** | 11 items based on [ip.net.coffee's guide to using Claude Code reliably](https://ip.net.coffee/claude/claudecode.html): exit IP, TLS fingerprint, DNS, IPv6, rule order, keep-alive and more. Items that local checks, the exit score and the proxy config can answer are judged automatically; the rest come with how to check them yourself |
 | **Window + tray + web** | WebView panel (default) / tkinter panel (fallback), tray notifications, local `127.0.0.1` web page as an alternative |
 | **System notifications** | Alerts on state transitions with cooldown and recovery notices; can be paused |
@@ -78,9 +78,9 @@ The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / pr
 
 ### 2. Install
 
-**Installer (recommended)**: download [`CCGuard-Setup-0.7.0.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
+**Installer (recommended)**: download [`CCGuard-Setup-0.7.1.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.1/CCGuard-Setup-0.7.1.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
 
-The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.0.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
+The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.1.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
 
 **From source**: needs Python 3.10+ (the official installer normally includes tkinter). Download "Source code (zip)" from the release page or clone the repository:
 

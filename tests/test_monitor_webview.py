@@ -383,7 +383,7 @@ class ClaudeAndUpdates(Base):
                  'kind': 'msix', 'supported': True, '_roots': [7]}
         self.api._claude = types.SimpleNamespace(
             status=lambda: dict(state),
-            close=lambda: self.claude_calls.append('close') or {'closed': 1},
+            close=lambda: self.claude_calls.append('close') or {'closed': 1, 'helpers': 1, 'services': 1},
             autostart=lambda: [{'id': 'task:Claude_x:ClaudeStartup', 'enabled': False}],
             disable_autostart=lambda entry_id: self.claude_calls.append(entry_id) or {'ok': True})
         self.api._prefs_path = self.dir / 'prefs.json'
@@ -399,7 +399,7 @@ class ClaudeAndUpdates(Base):
             self.assertTrue(self.api.close_claude()['ok'])
         self.assertTrue(self.api.disable_claude_autostart('task:Claude_x:ClaudeStartup')['ok'])
         self.assertEqual(self.claude_calls, ['close', 'task:Claude_x:ClaudeStartup'])
-        self.assertIn('已关闭 Claude', self.api.log_text())
+        self.assertIn('已关闭 Claude（1 个主进程、1 个附属进程、1 个后台服务）', self.api.log_text())
         self.assertIn('已关闭 Claude 开机自启', self.api.log_text())
 
     def test_close_failure_is_reported(self):

@@ -6,7 +6,10 @@ const STATES = ['ok', 'degraded', 'fail', 'unknown'];
 const STATE_TEXT = { ok: '正常', degraded: '降级', fail: '失效', unknown: '未知' };
 const PAGES = ['status', 'exit', 'claude', 'history', 'log', 'settings', 'about'];
 const CHECK_TEXT = { ok: '正常', warn: '需调整', unknown: '未知', manual: '自查' };
-const DESIGN_WIDTH = 900;
+// The status page sets the height; other pages (Claude, history, log) need more room, so the
+// window never starts smaller than this. Both are capped to the screen by the bridge.
+const DESIGN_WIDTH = 1000;
+const MIN_HEIGHT = 760;
 
 function stateClass(value) {
   return STATES.includes(value) ? value : 'unknown';
@@ -71,7 +74,11 @@ function updateView(result) {
 // Claude desktop status -> header pill, page state line and whether "close" is offered.
 function claudeView(status) {
   if (!status || !status.running) return { cls: 'off', text: '未运行', pill: null, detail: '', canClose: false };
-  const detail = status.processes + ' 个进程' + (status.code_sessions ? '，' + status.code_sessions + ' 个 Claude Code 会话' : '');
+  const parts = [];
+  if (status.processes) parts.push(status.processes + ' 个进程');
+  if (status.code_sessions) parts.push(status.code_sessions + ' 个 Claude Code 会话');
+  if (status.services) parts.push('后台服务运行中');
+  const detail = parts.join('，');
   if (status.background) {
     return { cls: 'background', text: '窗口已关闭，仍在后台运行', pill: 'Claude 后台运行', detail, canClose: true };
   }
@@ -373,6 +380,8 @@ function bind() {
         off.type = 'button';
         off.textContent = '关闭';
         off.onclick = async () => {
+          if (entry.admin && !await confirmAction('改为手动启动？',
+            '这是 Claude 的系统服务，改为手动后不再开机启动，Claude 需要时仍可启动它。Windows 会弹出管理员确认。', '改为手动')) return;
           const result = await act(api().disable_claude_autostart(entry.id));
           if (result.ok) renderAutostart({ ok: true, entries: result.entries });
         };
@@ -426,7 +435,7 @@ function bind() {
   }
 
   async function closeClaude() {
-    const ok = await confirmAction('关闭 Claude？', '会结束 Claude 的所有窗口和后台进程，正在运行的 Claude Code 任务也会中断。', '关闭 Claude');
+    const ok = await confirmAction('关闭 Claude？', '会结束 Claude 的所有窗口和后台进程，并停止它的后台服务，正在运行的 Claude Code 任务也会中断。', '关闭 Claude');
     if (!ok) return;
     const result = await act(api().close_claude());
     renderClaudeStatus(result.status);
@@ -536,7 +545,8 @@ function bind() {
     const side = document.querySelector('.sidebar');
     const sideHeight = Array.from(side.children).reduce((sum, child) => sum + child.offsetHeight, 0) + 120;
     // +2: sub-pixel rounding would otherwise leave a 1px scroll range.
-    await api().fit(DESIGN_WIDTH, Math.ceil(Math.max(mainHeight, sideHeight)) + 2, window.innerWidth, window.innerHeight);
+    await api().fit(DESIGN_WIDTH, Math.max(MIN_HEIGHT, Math.ceil(Math.max(mainHeight, sideHeight)) + 2),
+      window.innerWidth, window.innerHeight);
   }
 
   async function poll() {

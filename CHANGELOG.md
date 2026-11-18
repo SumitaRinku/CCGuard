@@ -2,6 +2,13 @@
 
 每个版本给出主要变化与验证方式；逐次提交的细节见 git 历史。面向用户的简短更新日志在 `assets/monitor/release-notes.json`，面板“关于”页显示。
 
+## 0.7.1（2026-11-18）
+
+- 修复：用 CCGuard 关闭 Claude 后，任务管理器的 Claude 分组里仍剩 `cowork-svc.exe` 和 `Runtime Broker`。前者是 Claude 安装包注册的 Windows 服务 `CoworkVMService`（显示名 Claude，LocalSystem，开机自动启动），后者是带 Claude 包标识的 RuntimeBroker。现在关闭时先结束进程树，再按包标识结束剩下的附属进程，最后 `sc stop` 停止服务；该服务的访问控制允许已登录用户停止，不需要管理员。
+- 运行状态把运行中的 Claude 服务算作“后台运行”。开机自启列出该服务，开机自动启动时可改为手动（`sc config ... start= demand`，经 Windows 管理员确认）；只处理二进制在 Claude 安装包内的同名服务。
+- 面板默认窗口加宽到 1000、最低高度 760（CSS 像素，按屏幕限制），其他页面显示更多内容。
+- 验证：完整单元测试与页面 Node 测试通过；本机只读核对识别出 CoworkVMService（运行、自动启动）与 Claude 的 RuntimeBroker；提权命令用不提权的 `sc query` 替身核对退出码传递。真实的关闭和改启动类型未在本机执行（会话运行在 Claude 中）。
+
 ## 0.7.0（2026-11-18）
 
 - Claude 页：显示 Claude 桌面版（MSIX）是否在后台运行、有无窗口、托管几个 Claude Code 会话，面板顶部常驻提示；确认后用 `taskkill /T /F` 结束整棵进程树。

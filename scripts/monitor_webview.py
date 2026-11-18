@@ -326,8 +326,14 @@ class PanelApi:
         except Exception as error:
             return {'ok': False, 'message': '没能关闭 Claude：' + str(error), 'status': self.claude_status()}
         time.sleep(0.5)
-        self._note('Claude', '已关闭 Claude（%d 个主进程）' % result.get('closed', 0))
-        return {'ok': True, 'message': '已关闭 Claude' if result.get('closed') else 'Claude 没有在运行',
+        parts = ['%d 个主进程' % result.get('closed', 0)]
+        if result.get('helpers'):
+            parts.append('%d 个附属进程' % result['helpers'])
+        if result.get('services'):
+            parts.append('%d 个后台服务' % result['services'])
+        did = result.get('closed') or result.get('helpers') or result.get('services')
+        self._note('Claude', '已关闭 Claude（%s）' % '、'.join(parts))
+        return {'ok': True, 'message': '已关闭 Claude' if did else 'Claude 没有在运行',
                 'status': self.claude_status()}
 
     def claude_autostart(self):
@@ -563,7 +569,7 @@ def run(cfg, config_path, tray=False, start_hidden=False, webview=None):
     api = PanelApi(cfg, config_path, store, tray_alive=tray_alive, history=history, screen=screen)
     hidden = bool(start_hidden and tray_alive())
     window = webview.create_window(
-        engine.APP_NAME, url=PAGE.as_uri(), js_api=api, width=980, height=700,
+        engine.APP_NAME, url=PAGE.as_uri(), js_api=api, width=1020, height=800,
         min_size=(720, 460), background_color='#f7f4ef', hidden=hidden, text_select=True)
     flags = {'exit': False, 'visible': not hidden, 'shown': False}
 

@@ -39,8 +39,8 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 | **处理指引** | 点开任一检查卡片，查看它检查什么、当前结果对应的处理步骤、这一项最近 24 小时的变化和结果代码 |
 | **检测日志** | 每项检查都记下读了哪条系统查询、看到了什么、为什么判成这个状态，在卡片详情的“检测过程”里逐条列出；不含 IP 和文件路径。原理见 [检测原理](docs/monitor.md#principles) |
 | **出口评分** | “出口”页一键查看当前出口 IP 的信任分、类型（住宅／机房）、地区、运营商和 VPN／代理／滥用标记，数据来自 [ip.net.coffee](https://ip.net.coffee/claude/)；可在浏览器打开完整检测页。检测过程不连接 Claude，见 [出口评分](docs/monitor.md#exit-score) |
-| **Claude 后台提醒** | Claude 桌面版（MSIX）关掉窗口后仍在后台运行并联网；面板顶部和“Claude”页显示它是否在运行、有没有窗口、带着几个 Claude Code 会话，可一键结束全部进程。只看进程列表，不连接 Claude |
-| **Claude 开机自启** | 查出 Claude 的应用启动任务（StartupTask）、注册表 Run 项和启动文件夹快捷方式，开着的可在面板里直接关闭，效果与任务管理器“禁用”相同 |
+| **Claude 后台提醒** | Claude 桌面版（MSIX）关掉窗口后仍在后台运行并联网；面板顶部和“Claude”页显示它是否在运行、有没有窗口、带着几个 Claude Code 会话，可一键结束全部进程并停止它的后台服务 CoworkVMService。只看进程和服务状态，不连接 Claude |
+| **Claude 开机自启** | 查出 Claude 的应用启动任务（StartupTask）、注册表 Run 项、启动文件夹快捷方式和开机自动启动的 CoworkVMService 服务，开着的可在面板里直接关闭（服务改为手动启动，需管理员确认一次） |
 | **Claude Code 检查清单** | 按 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html) 整理 11 项：出口 IP、TLS 指纹、DNS、IPv6、分流规则顺序、长连接等。能从本机检查、出口评分和代理配置判断的项直接给出结果，其余给出自查方法 |
 | **窗口 + 托盘 + 网页** | WebView 面板（默认）／tkinter 面板（回退）、托盘通知、`127.0.0.1` 本地网页备选 |
 | **系统通知** | 状态跃迁时提醒，带冷却与恢复提示；可暂停 |
@@ -78,9 +78,9 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 
 ### 2. 安装
 
-**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.0.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.0/CCGuard-Setup-0.7.0.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
+**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.1.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.1/CCGuard-Setup-0.7.1.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
 
-安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.0.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
+安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.1.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
 
 **源码运行**：需要 Python 3.10+（官方安装包通常自带 tkinter）。下载 Release 页的 “Source code (zip)” 或克隆仓库：
 

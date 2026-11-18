@@ -188,11 +188,12 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 <a id="claude-app"></a>
 ## Claude 运行状态与开机自启
 
-Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉窗口后通常仍在后台运行，Claude Code 会话也由它托管。以为它已经退出、随后关掉代理或切换网络，后台的 Claude 就会用新网络连出去。
+Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉窗口后通常仍在后台运行，Claude Code 会话也由它托管。安装包还注册了 Windows 服务 `CoworkVMService`（显示名 Claude，以 LocalSystem 运行，开机自动启动，程序为包内的 `cowork-svc.exe`）。以为它已经退出、随后关掉代理或切换网络，后台的 Claude 就会用新网络连出去。
 
-- **运行状态**：每 5 秒读一次进程列表（Toolhelp 快照 + 进程映像路径），路径在 `\WindowsApps\Claude_` 或经典安装的 `\AnthropicClaude\` 下的算 Claude 桌面版，路径含 `\claude-code\` 的子进程算 Claude Code 会话；再看这些进程有没有可见窗口。没有窗口但在运行时，面板顶部显示“Claude 后台运行”，侧栏“Claude”页标出“后台”。只看进程，不连接 Claude，不读它的数据。单独安装的 Claude Code 命令行不在其中。
-- **关闭**：确认后对 Claude 的根进程执行 `taskkill /T /F`，结束整棵进程树，包括它托管的 Claude Code 会话。未保存的输入会丢失。
-- **开机自启**：查三处，只列名字含 Claude 或 Anthropic 的项：
+- **运行状态**：每 5 秒读一次进程列表（Toolhelp 快照 + 进程映像路径），路径在 `\WindowsApps\Claude_` 或经典安装的 `\AnthropicClaude\` 下的算 Claude 桌面版，路径含 `\claude-code\` 的子进程算 Claude Code 会话；再看这些进程有没有可见窗口。`CoworkVMService` 在运行也算 Claude 在运行。没有窗口但在运行时，面板顶部显示“Claude 后台运行”，侧栏“Claude”页标出“后台”。只看进程，不连接 Claude，不读它的数据。单独安装的 Claude Code 命令行不在其中。
+- **关闭**：确认后依次：对 Claude 的根进程执行 `taskkill /T /F`，结束整棵进程树，包括它托管的 Claude Code 会话；按进程的包标识结束剩下的 Claude 附属进程（如它的 RuntimeBroker）；用 `sc stop` 停止 `CoworkVMService`（服务的访问控制允许已登录用户停止，不需要管理员）。未保存的输入会丢失。
+- **开机自启**：查四处，只列名字含 Claude 或 Anthropic 的项：
+  0. `CoworkVMService` 的启动类型。为“自动”时可改为“手动”：CCGuard 以管理员身份运行 `sc config CoworkVMService start= demand`，Windows 会弹出确认；改后不再开机启动，Claude 需要时仍可启动它。可在“服务”（services.msc）里改回。只处理程序位于 Claude 安装包内的这个服务。
   1. MSIX 应用启动任务：`HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\<包名>\<任务名>` 的 `State`（0 已禁用、1 用户已禁用、2 已启用、3 策略禁用、4 策略启用）。关闭时写 `State=1`，与“设置 → 应用 → 启动”里关掉开关相同；3、4 由组策略控制，不改。
   2. `HKCU\...\CurrentVersion\Run` 里的值。
   3. 当前用户启动文件夹里的快捷方式。
