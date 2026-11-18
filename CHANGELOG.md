@@ -7,6 +7,7 @@
 - 修复：“关于”页“下载并安装”后 CCGuard 退出，但新版本没有安装、也没有重新打开。安装程序已下载并通过校验，原因在启动等待进程的方式：`DETACHED_PROCESS` 让 Windows PowerShell 拿不到控制台，脚本一行未执行就退出，安装程序从未启动。改为只用 `CREATE_NO_WINDOW`，等待进程仍在 CCGuard 退出后继续运行。
 - 新增 Windows 回归测试：子进程按 CCGuard 的方式启动等待进程后退出，断言安装程序（用记录参数的替身）在其退出后以 `/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH` 启动；旧代码下该测试失败。
 - 0.7.0、0.7.1 里的这段代码有问题，从这两个版本需手动安装一次 0.7.2。
+- 发布：本仓库 `v0.7.2`（提交 `4deb29c`）。`CCGuard-Setup-0.7.2.exe` 由 `Windows installer` 工作流在发布时构建并附上，SHA-256 `83b085da472e2d4acbfefc180f4c75223129ed3490078dcb2076d963f6346370`，另附 `SHA256SUMS-installer-0.7.2.txt`；下载回的资产哈希一致。发布构建通过打包自检、静默安装、安装后自检、静默卸载；推送 CI 在 Linux、Windows（3.12）与 Linux 3.10 通过，Windows 上实际运行了新回归测试。
 
 ## 0.7.1（2026-11-18）
 
