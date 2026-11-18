@@ -110,6 +110,51 @@ class Check(unittest.TestCase):
             self.assertNotIn('score', result)
 
 
+FULL = dict(RISK, cidr='203.0.113.0/24', company_type='isp', company_name='Example Broadband',
+            abuser_score='0 (Very Low)', datacenter_name='', rdns='host-203-0-113-45.example.ne.jp',
+            rpki_status='valid', src='g1')
+FULL_TRACE = TRACE + b'http=http/1.1\ntls=TLSv1.3\nwarp=off\n'
+
+
+class Details(unittest.TestCase):
+    def run_full(self, risk=FULL, trace=FULL_TRACE):
+        http = FakeHttp(trace=(200, trace), risk=(200, json.dumps(risk).encode()))
+        return score.check(get=http, clock=lambda: 1_700_000_000)
+
+    def test_more_attributes_for_the_exit_page(self):
+        facts = self.run_full()['facts']
+        self.assertEqual(facts['region_check'], '一致（JP）')
+        self.assertEqual(facts['company'], '运营商，Example Broadband')
+        self.assertEqual(facts['abuse'], '0（很低）')
+        self.assertEqual(facts['rdns'], '有，域名 example.ne.jp')
+        self.assertEqual(facts['rpki'], '有效')
+        self.assertEqual(facts['edge'], 'NRT 节点，TLSv1.3，HTTP/1.1')
+        self.assertEqual(facts['flags_detail'], 'VPN、代理、Tor、滥用记录、爬虫 均未标记')
+
+    def test_the_ip_never_reaches_the_result(self):
+        body = json.dumps(self.run_full(), ensure_ascii=False)
+        for leak in (IP, '203-0-113-45', '203.0.113.0', 'host-203'):
+            self.assertNotIn(leak, body)
+
+    def test_region_mismatch_flags_and_datacenter(self):
+        risk = dict(FULL, countryCode='us', is_vpn=True, isResidential=False, is_datacenter=True,
+                    company_type='hosting', datacenter_name='Example DC', rdns='', rpki_status='invalid',
+                    abuser_score='0.02 (Elevated)')
+        result = self.run_full(risk)
+        facts = result['facts']
+        self.assertEqual(facts['region_check'], '不一致：Cloudflare 判为 JP，IP 库为 US')
+        self.assertEqual(facts['company'], '机房，Example Broadband（机房：Example DC）')
+        self.assertEqual((facts['rdns'], facts['rpki'], facts['abuse']), ('无', '无效', '0.02（偏高）'))
+        self.assertEqual(facts['flags_detail'], '标记了：VPN')
+        self.assertTrue(any(row['text'].startswith('地区不一致') and row['ok'] is False for row in result['log']))
+
+    def test_missing_fields_read_as_unknown(self):
+        facts = score.facts({})
+        for key in ('region_check', 'company', 'abuse', 'rpki', 'edge', 'timezone'):
+            self.assertEqual(facts[key], '未知', key)
+        self.assertEqual(facts['rdns'], '无')
+
+
 class Helpers(unittest.TestCase):
     def test_label_bands_match_the_page(self):
         self.assertEqual([score.label(v) for v in (100, 95, 94, 80, 79, 50, 49, 25, 24, 0)],

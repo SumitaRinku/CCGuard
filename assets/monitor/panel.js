@@ -53,10 +53,47 @@ function codeParts(text) {
 }
 
 // Exit score result -> what the exit page shows.
-function scoreView(result) {
+// Minutes east of UTC for an IANA zone at `now`; null when the zone is unknown to Intl.
+function zoneOffset(zone, now) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric',
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(now);
+    const get = type => Number(parts.find(part => part.type === type).value);
+    const wall = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'));
+    return Math.round((wall - Math.floor(now.getTime() / 60000) * 60000) / 60000);
+  } catch (_) {
+    return null;
+  }
+}
+
+function utcText(minutes) {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(minutes);
+  return 'UTC' + sign + Math.floor(abs / 60) + (abs % 60 ? ':' + String(abs % 60).padStart(2, '0') : '');
+}
+
+// Exit IP time zone vs this PC's: websites read the browser's zone, so a mismatch stands out.
+function tzView(ipZone, localZone, now) {
+  const ip = ipZone && ipZone !== '未知' ? zoneOffset(ipZone, now) : null;
+  const local = localZone ? zoneOffset(localZone, now) : null;
+  const exit = ip === null ? (ipZone || '未知') : ipZone + '（' + utcText(ip) + '）';
+  if (local === null) return { exit, local: '未知' };
+  const mine = localZone + '（' + utcText(local) + '）';
+  if (ip === null) return { exit, local: mine };
+  return { exit, local: ip === local ? mine + '，与出口一致' : mine + '，与出口不一致，网页能读到本机时区' };
+}
+
+function scoreView(result, localZone, now) {
   if (!result) return { cls: 'unknown', value: '—', label: '未检测', ip: '', facts: null };
   if (!result.ok) return { cls: 'unknown', value: '—', label: '检测失败', ip: '', facts: null };
-  const facts = Object.assign({}, result.facts, { flags: (result.facts.flags || []).join('、') || '无' });
+  if (localZone === undefined) {
+    try { localZone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { localZone = ''; }
+  }
+  const zones = tzView(result.facts.timezone, localZone, now || new Date());
+  const facts = Object.assign({}, result.facts, {
+    flags: result.facts.flags_detail || (result.facts.flags || []).join('、') || '无',
+    timezone: zones.exit, local_tz: zones.local,
+  });
   return { cls: stateClass(result.level), value: String(result.score), label: result.label,
            ip: '出口 ' + result.ip + (result.ipv6 ? '（IPv6）' : ''), facts };
 }
@@ -382,8 +419,6 @@ function bind() {
         off.type = 'button';
         off.textContent = '关闭';
         off.onclick = async () => {
-          if (entry.admin && !await confirmAction('改为手动启动？',
-            '这是 Claude 的系统服务，改为手动后不再开机启动，Claude 需要时仍可启动它。Windows 会弹出管理员确认。', '改为手动')) return;
           const result = await act(api().disable_claude_autostart(entry.id));
           if (result.ok) renderAutostart({ ok: true, entries: result.entries });
         };
@@ -677,7 +712,7 @@ function bind() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { stateClass, subtitleText, barBlocks, codeParts, clock, scoreView, updateView, claudeView, checkClass, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
+  module.exports = { stateClass, subtitleText, barBlocks, codeParts, clock, scoreView, tzView, zoneOffset, updateView, claudeView, checkClass, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
 } else if (typeof window !== 'undefined') {
   if (window.pywebview && window.pywebview.api) bind();
   else window.addEventListener('pywebviewready', bind, { once: true });

@@ -113,31 +113,12 @@ class Service(unittest.TestCase):
             claude.close([(1, 0, 'explorer.exe')], services=[SERVICE],
                          run=lambda argv, **k: subprocess.CompletedProcess(argv, 5))
 
-    def test_autostart_lists_the_boot_service(self):
-        entries = claude.autostart(registry(0), startup_folder=Path(tempfile.gettempdir()) / 'none', services=[SERVICE])
-        self.assertEqual(entries[0], {'id': 'service:CoworkVMService', 'kind': 'service',
-                                      'name': 'CoworkVMService（系统服务，开机启动）', 'enabled': True,
-                                      'locked': False, 'admin': True})
-        manual = claude.autostart(registry(0), startup_folder=Path(tempfile.gettempdir()) / 'none',
-                                  services=[dict(SERVICE, start='demand')])
-        self.assertFalse(manual[0]['enabled'])
-
-    def test_disable_service_asks_windows_for_admin_and_sets_manual(self):
-        calls = []
-        claude.disable_autostart('service:CoworkVMService', run=ok_run(calls), services=[SERVICE])
-        script = calls[0][-1]
-        self.assertIn("'config','CoworkVMService','start=','demand'", script)
-        self.assertIn('-Verb RunAs', script)
-        self.assertIn('exit $p.ExitCode', script)
-
-    def test_disable_service_refusals(self):
-        with self.assertRaises(claude.ClaudeAppError):   # declined at the administrator prompt
-            claude.disable_autostart('service:CoworkVMService', services=[SERVICE],
-                                     run=lambda argv, **k: subprocess.CompletedProcess(argv, 1))
-        for entry_id, services in (('service:Spooler', [dict(SERVICE, name='Spooler')]),
-                                   ('service:CoworkVMService', [dict(SERVICE, path=r'C:\x\cowork-svc.exe')])):
-            with self.assertRaises(claude.ClaudeAppError, msg=entry_id):
-                claude.disable_autostart(entry_id, run=lambda *a, **k: self.fail(), services=services)
+    def test_boot_service_is_not_listed_as_autostart(self):
+        """User decision: CoworkVMService's boot start is left alone, so it is not offered."""
+        entries = claude.autostart(registry(0), startup_folder=Path(tempfile.gettempdir()) / 'none')
+        self.assertEqual([entry['id'] for entry in entries], ['task:Claude_pzs8sxrjxfjjc:ClaudeStartup'])
+        with self.assertRaises(claude.ClaudeAppError):
+            claude.disable_autostart('service:CoworkVMService', registry(0))
 
 
 class FakeRegistry:

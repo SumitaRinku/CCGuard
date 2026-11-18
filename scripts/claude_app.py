@@ -316,22 +316,16 @@ def _approved_enabled(data):
     return not (isinstance(data, (bytes, bytearray)) and data and data[0] & 1)
 
 
-def autostart(registry=None, startup_folder=None, services=None):
-    """[{'id','kind','name','enabled'}] Claude entries that start at login or boot; [] when there are none.
+def autostart(registry=None, startup_folder=None):
+    """[{'id','kind','name','enabled'}] Claude entries that start at login; [] when there are none.
 
-    Real services are queried only together with the real registry (fakes stay fakes).
+    Claude's CoworkVMService also starts at boot, but it is left alone on purpose (user decision):
+    it is not listed here; closing Claude still stops it.
     """
     if registry is None and platform.system() != 'Windows':
         return []
-    if services is None and registry is not None:
-        services = []
     registry = registry or Registry()
     entries = []
-    for service in claude_services(services):
-        auto = service.get('start') == 'auto'
-        entries.append({'id': 'service:' + service['name'], 'kind': 'service',
-                        'name': '%s（系统服务%s）' % (service['name'], '，开机启动' if auto else ''),
-                        'enabled': auto, 'locked': False, 'admin': True})
     for package in registry.subkeys(PACKAGE_KEY):
         if not re.match(r'^(claude|anthropic)', package, re.I):
             continue
@@ -358,28 +352,9 @@ def autostart(registry=None, startup_folder=None, services=None):
     return entries
 
 
-def manual_start_command(name):
-    """Elevated `sc config <name> start= demand`: Windows shows its own administrator prompt."""
-    return ['powershell.exe', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-            "$p = Start-Process -FilePath sc.exe -ArgumentList 'config','%s','start=','demand' "
-            "-Verb RunAs -WindowStyle Hidden -PassThru -Wait; exit $p.ExitCode" % name]
-
-
-def disable_autostart(entry_id, registry=None, run=subprocess.run, services=None):
-    """Turn one entry off the way Windows Settings does; reversible from Settings > Apps > Startup.
-
-    A Claude service is switched from automatic to manual start (one administrator prompt); Claude
-    can still start it when it needs it, and the Services console can switch it back.
-    """
+def disable_autostart(entry_id, registry=None):
+    """Turn one entry off the way Windows Settings does; reversible from Settings > Apps > Startup."""
     kind, _, rest = entry_id.partition(':')
-    if kind == 'service':
-        if services is None and registry is not None:
-            services = []
-        if rest not in SERVICE_NAMES or not any(s['name'] == rest for s in claude_services(services)):
-            raise ClaudeAppError('不是 Claude 的服务')
-        if _run(run, manual_start_command(rest), timeout=180).returncode != 0:
-            raise ClaudeAppError('没有改成手动启动：需要在 Windows 弹出的管理员提示里选“是”')
-        return {'ok': True, 'id': entry_id}
     registry = registry or Registry()
     if kind == 'task':
         package, _, task = rest.partition(':')

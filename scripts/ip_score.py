@@ -10,6 +10,7 @@ in their own browser. Results keep only a masked IP.
 """
 import ipaddress
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -25,6 +26,9 @@ RESTRICTED = {
     'SY': '叙利亚', 'CU': '古巴', 'BY': '白俄罗斯', 'VE': '委内瑞拉',
 }
 COMPANY_TYPES = {'isp': '运营商', 'hosting': '机房', 'business': '企业', 'education': '教育', 'government': '政府'}
+FLAG_NAMES = (('is_vpn', 'VPN'), ('is_proxy', '代理'), ('is_tor', 'Tor'), ('is_abuser', '滥用记录'), ('is_crawler', '爬虫'))
+ABUSE_LEVELS = {'very low': '很低', 'low': '低', 'elevated': '偏高', 'high': '高', 'very high': '很高'}
+RPKI = {'valid': '有效', 'invalid': '无效', 'unknown': '未登记', 'not-found': '未登记', 'notfound': '未登记'}
 
 
 class ScoreError(Exception):
@@ -79,10 +83,25 @@ def parse_trace(body):
     return fields
 
 
-def facts(data):
-    flags = [name for key, name in (('is_vpn', 'VPN'), ('is_proxy', '代理'), ('is_tor', 'Tor'),
-                                     ('is_abuser', '滥用记录'), ('is_crawler', '爬虫'))
-             if data.get(key) is True]
+def _abuse(text):
+    """'0 (Very Low)' -> '0（很低）'; other shapes pass through, '' when absent."""
+    text = str(text or '').strip()
+    match = re.fullmatch(r'([\d.]+)\s*\(([^)]*)\)', text)
+    if not match:
+        return text
+    return '%s（%s）' % (match.group(1), ABUSE_LEVELS.get(match.group(2).strip().lower(), match.group(2).strip()))
+
+
+def _rdns_domain(name):
+    """Reverse DNS without its host label, which usually spells out the IP: 'a-1-2-3-4.isp.ne.jp' -> 'isp.ne.jp'."""
+    labels = [label for label in str(name or '').strip().strip('.').split('.') if label]
+    return '.'.join(labels[1:]) if len(labels) > 2 else ''
+
+
+def facts(data, trace=None):
+    """IP attributes for the panel. Nothing here contains the IP (rDNS host label and CIDR are dropped)."""
+    trace = trace or {}
+    flags = [name for key, name in FLAG_NAMES if data.get(key) is True]
     if data.get('isResidential') is True:
         kind = '住宅'
     elif data.get('is_datacenter') is True:
@@ -94,13 +113,36 @@ def facts(data):
     place = ' '.join(str(data[key]) for key in ('country', 'region', 'city') if data.get(key))
     org = str(data.get('asOrganization') or data.get('company_name') or '')
     asn = data.get('asn')
+    code = str(data.get('countryCode') or '').upper()
+    seen = str(trace.get('loc') or '').upper()
+    if seen and code:
+        region_check = '一致（%s）' % code if seen == code else '不一致：Cloudflare 判为 %s，IP 库为 %s' % (seen, code)
+    else:
+        region_check = '未知'
+    company_type = COMPANY_TYPES.get(str(data.get('company_type') or ''), '')
+    company = '，'.join(part for part in (company_type, str(data.get('company_name') or '')) if part)
+    if data.get('datacenter_name'):
+        company += '（机房：%s）' % data['datacenter_name']
+    rdns = _rdns_domain(data.get('rdns'))
+    rpki = str(data.get('rpki_status') or '').lower()
+    edge = '，'.join(part for part in (
+        trace.get('colo') and '%s 节点' % trace['colo'], trace.get('tls'), trace.get('http', '').upper() or None,
+        trace.get('warp') == 'on' and 'WARP 开启') if part)
     return {
         'location': place or '未知',
+        'country_code': code,
+        'region_check': region_check,
         'network': (('AS%s ' % asn) if asn else '') + org if (asn or org) else '未知',
+        'company': company or '未知',
         'kind': kind,
-        'timezone': str(data.get('timezone') or '未知'),
-        'country_code': str(data.get('countryCode') or '').upper(),
         'flags': flags,
+        'flags_detail': '、'.join(name for _key, name in FLAG_NAMES) + ' 均未标记' if not flags
+        else '标记了：' + '、'.join(flags),
+        'abuse': _abuse(data.get('abuser_score')) or '未知',
+        'rdns': ('有，域名 %s' % rdns) if rdns else ('有' if data.get('rdns') else '无'),
+        'rpki': RPKI.get(rpki, rpki or '未知'),
+        'timezone': str(data.get('timezone') or '未知'),
+        'edge': edge or '未知',
     }
 
 
@@ -145,9 +187,11 @@ def check(get=http_get, clock=time.time):
         else:
             raise ScoreError('该 IP 暂无评分数据')
         result.update(ok=True, score=score, label=name, level='fail' if code in RESTRICTED else level(score),
-                      ip=masked, ipv6=ipv6, facts=facts(data))
+                      ip=masked, ipv6=ipv6, facts=facts(data, trace))
         if result['facts']['flags']:
             note('标记：' + '、'.join(result['facts']['flags']), False)
+        if result['facts']['region_check'].startswith('不一致'):
+            note('地区' + result['facts']['region_check'], False)
     except (ScoreError, urllib.error.URLError, OSError, ValueError) as error:
         reason = getattr(error, 'reason', None) or error
         result['error'] = str(reason)

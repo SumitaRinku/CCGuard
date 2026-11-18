@@ -34,6 +34,21 @@ assert.equal(sv.value, '88');
 assert.equal(sv.ip, '出口 203.0.*.*（IPv6）');
 assert.equal(sv.facts.flags, 'VPN、Tor');
 assert.equal(panel.scoreView({ok: true, score: 1, label: 'x', level: 'weird', ip: '', facts: {flags: []}}).facts.flags, '无');
+// Time zones: fixed instant in January (no daylight saving in either zone).
+const jan = new Date(Date.UTC(2026, 0, 15, 3, 0));
+assert.equal(panel.zoneOffset('Asia/Tokyo', jan), 540);
+assert.equal(panel.zoneOffset('Asia/Kolkata', jan), 330);
+assert.equal(panel.zoneOffset('Not/AZone', jan), null);
+assert.deepEqual(panel.tzView('Asia/Tokyo', 'Asia/Tokyo', jan),
+  {exit: 'Asia/Tokyo（UTC+9）', local: 'Asia/Tokyo（UTC+9），与出口一致'});
+assert.deepEqual(panel.tzView('Asia/Tokyo', 'Asia/Shanghai', jan),
+  {exit: 'Asia/Tokyo（UTC+9）', local: 'Asia/Shanghai（UTC+8），与出口不一致，网页能读到本机时区'});
+assert.equal(panel.tzView('America/St_Johns', 'Asia/Kolkata', jan).exit, 'America/St_Johns（UTC-3:30）');
+assert.deepEqual(panel.tzView('未知', 'Asia/Tokyo', jan), {exit: '未知', local: 'Asia/Tokyo（UTC+9）'});
+const detailed = panel.scoreView({ok: true, score: 99, label: '极度纯净', level: 'ok', ip: '203.0.*.*',
+  facts: {timezone: 'Asia/Tokyo', flags: [], flags_detail: 'VPN、代理、Tor、滥用记录、爬虫 均未标记'}}, 'Asia/Shanghai', jan);
+assert.equal(detailed.facts.flags, 'VPN、代理、Tor、滥用记录、爬虫 均未标记');
+assert.equal(detailed.facts.local_tz, 'Asia/Shanghai（UTC+8），与出口不一致，网页能读到本机时区');
 
 assert.equal(panel.updateView(null).download, null);
 assert.match(panel.updateView({ok: false, error: 'offline'}).text, /检查失败：offline/);
