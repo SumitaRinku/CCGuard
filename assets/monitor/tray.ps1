@@ -192,7 +192,9 @@ $timer.add_Tick({
     $cooldown = $CooldownSeconds
     if ($null -ne $state.cooldown_seconds -and [int]$state.cooldown_seconds -ge 0) { $cooldown = [int]$state.cooldown_seconds }
     $age = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - [int64]$state.checked_at
-    if ($age -gt ($interval * 3)) {
+    # "Stopped" only after three missed rounds and at least a minute: one slow round (a cold start,
+    # a busy machine, the rule list refresh) is not a stopped monitor.
+    if ($age -gt [Math]::Max($interval * 3, 60)) {
         Set-TrayState 'unknown'
         if (-not $script:staleNotified) {
             if (-not $script:paused) { Show-Notice $AppName '监测已停止更新，请检查监测进程。' ([System.Windows.Forms.ToolTipIcon]::Warning) }

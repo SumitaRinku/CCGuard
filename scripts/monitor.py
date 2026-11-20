@@ -102,20 +102,40 @@ CLIENT_PRESETS = {
 
 KNOWN_CORES = tuple(sorted({name for preset in CLIENT_PRESETS.values() for name in preset['process_names']}))
 
-PROBE_SCRIPT = r'''
+# The outbound allow-rule list is the one slow query (~4 s with ~1,300 rules) and rarely changes,
+# so the long-lived worker refreshes it at most this often; everything else is read every round.
+RULES_TTL_SECONDS = 60
+
+# Long-lived probe process. A fresh powershell.exe per round re-imports the networking and firewall
+# modules every time (12-15 s per round on a real machine, sometimes past the timeout), which made
+# monitoring look stopped. The worker loads them once, then answers one "collect" line per round
+# with one JSON line, and exits when CCGuard closes its stdin.
+PROBE_WORKER = r'''
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [Text.Encoding]::UTF8
-$result = [ordered]@{}
-$result.processes = @(Get-Process | Select-Object -ExpandProperty Name -Unique)
-$result.adapters = @(Get-NetAdapter | Select-Object Name, InterfaceDescription, Status)
-$result.routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object InterfaceAlias, RouteMetric, InterfaceMetric)
-$result.firewall = @(Get-NetFirewallProfile | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Enabled = [bool]$_.Enabled; DefaultOutboundAction = [string]$_.DefaultOutboundAction } })
-$result.rules = @(Get-NetFirewallRule -Direction Outbound -Action Allow -Enabled True | Select-Object -ExpandProperty DisplayName)
-$result.dns = @(Get-DnsClientServerAddress -AddressFamily IPv4 | Select-Object InterfaceAlias, ServerAddresses)
-$result.ipv6 = @(Get-NetAdapterBinding -ComponentID ms_tcpip6 | Select-Object Name, Enabled)
-[pscustomobject]$result | ConvertTo-Json -Depth 4 -Compress
-'''
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$rules = @()
+$rulesAt = [DateTime]::MinValue
+while ($true) {
+    $line = [Console]::In.ReadLine()
+    if ($null -eq $line -or $line -eq 'exit') { break }
+    if ($line -ne 'collect') { continue }
+    $result = [ordered]@{}
+    $result.processes = @(Get-Process | Select-Object -ExpandProperty Name -Unique)
+    $result.adapters = @(Get-NetAdapter | Select-Object Name, InterfaceDescription, Status)
+    $result.routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object InterfaceAlias, RouteMetric, InterfaceMetric)
+    $result.firewall = @(Get-NetFirewallProfile | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Enabled = [bool]$_.Enabled; DefaultOutboundAction = [string]$_.DefaultOutboundAction } })
+    if (([DateTime]::UtcNow - $rulesAt).TotalSeconds -ge RULES_TTL) {
+        $rules = @(Get-NetFirewallRule -Direction Outbound -Action Allow -Enabled True | Select-Object -ExpandProperty DisplayName)
+        $rulesAt = [DateTime]::UtcNow
+    }
+    $result.rules = $rules
+    $result.dns = @(Get-DnsClientServerAddress -AddressFamily IPv4 | Select-Object InterfaceAlias, ServerAddresses)
+    $result.ipv6 = @(Get-NetAdapterBinding -ComponentID ms_tcpip6 | Select-Object Name, Enabled)
+    [Console]::Out.WriteLine(([pscustomobject]$result | ConvertTo-Json -Depth 4 -Compress))
+    [Console]::Out.Flush()
+}
+'''.replace('RULES_TTL', str(RULES_TTL_SECONDS))
 
 
 class MonitorError(Exception):
@@ -770,23 +790,68 @@ def overall(checks):
 
 
 class WindowsProbes:
-    def __init__(self, timeout=20):
-        self.timeout = timeout
+    """Read-only system queries through one long-lived, windowless PowerShell (see PROBE_WORKER).
+
+    The first answer waits up to first_timeout (module loading); later rounds up to timeout. A round
+    that times out or a worker that died is replaced by a fresh worker on the next round.
+    """
+
+    def __init__(self, timeout=20, first_timeout=60, popen=subprocess.Popen):
+        self.timeout, self.first_timeout, self.popen = timeout, first_timeout, popen
+        self._proc = self._lines = None
+        self._answered = False
+        self._lock = threading.Lock()
+
+    def _start(self):
+        import queue
+        proc = self.popen(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                           '-Command', PROBE_WORKER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        lines = queue.Queue()
+
+        def pump():
+            try:
+                for raw in proc.stdout:
+                    lines.put(raw)
+            except (OSError, ValueError):
+                pass
+            lines.put(None)
+        threading.Thread(target=pump, daemon=True).start()
+        self._proc, self._lines, self._answered = proc, lines, False
+
+    def close(self):
+        proc, self._proc = self._proc, None
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+    def _ask(self):
+        import queue
+        with self._lock:
+            try:
+                if self._proc is None or self._proc.poll() is not None:
+                    self._start()
+                self._proc.stdin.write(b'collect\n')
+                self._proc.stdin.flush()
+                raw = self._lines.get(timeout=self.timeout if self._answered else self.first_timeout)
+            except (OSError, ValueError, queue.Empty):
+                raw = None
+            if raw is None:
+                self.close()
+                return None
+            self._answered = True
+            return raw
 
     def collect(self):
         if platform.system() != 'Windows':
             return None
-        try:
-            proc = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                                   '-Command', PROBE_SCRIPT], capture_output=True, text=True, encoding='utf-8',
-                                  errors='replace', timeout=self.timeout,
-                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        if proc.returncode != 0 or not proc.stdout.strip():
+        raw = self._ask()
+        if not raw:
             return None
         try:
-            data = json.loads(proc.stdout.strip().lstrip('\ufeff'))
+            data = json.loads(raw.decode('utf-8', 'replace').strip().lstrip('\ufeff'))
         except ValueError:
             return None
         return data if isinstance(data, dict) else None

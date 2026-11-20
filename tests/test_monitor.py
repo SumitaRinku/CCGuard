@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tempfile
 import threading
 import unittest
@@ -956,19 +957,121 @@ class Quickstart(unittest.TestCase):
         self.assertEqual(m.main(['gui', '--config', str(path), '--start-hidden']), 2)
 
 
+class FakeWorker:
+    """Stands in for the long-lived PowerShell: answers each 'collect' line unless told to hang or die."""
+
+    def __init__(self, answer=b'{"processes": []}\n', hang=False, die=False):
+        import queue
+        self.answer, self.hang, self.die = answer, hang, die
+        self.out = queue.Queue()
+        self.requests, self.killed = [], False
+        worker = self
+
+        class Stdin:
+            def write(self, data):
+                worker.requests.append(data)
+                if worker.die:
+                    worker.out.put(None)
+                elif not worker.hang:
+                    worker.out.put(worker.answer)
+
+            def flush(self):
+                pass
+
+        self.stdin = Stdin()
+
+    @property
+    def stdout(self):
+        while True:
+            item = self.out.get()
+            if item is None:
+                return
+            yield item
+
+    def poll(self):
+        return 1 if (self.killed or self.die and self.requests) else None
+
+    def kill(self):
+        self.killed = True
+        self.out.put(None)
+
+
 class ProbeProcess(unittest.TestCase):
-    def test_probe_never_opens_a_console_window(self):
-        seen = {}
+    def probes(self, *workers, **kwargs):
+        made, seen = list(workers), []
 
-        def fake_run(argv, **kwargs):
-            seen.update(kwargs)
-            return subprocess.CompletedProcess(argv, 0, '{"processes": []}', '')
+        def popen(argv, **kw):
+            seen.append((argv, kw))
+            return made.pop(0)
+        return m.WindowsProbes(popen=popen, **kwargs), seen
 
-        with patch.object(m.platform, 'system', return_value='Windows'), \
-                patch.object(m.subprocess, 'run', side_effect=fake_run):
-            self.assertEqual(m.WindowsProbes().collect(), {'processes': []})
+    def collect(self, probes):
+        with patch.object(m.platform, 'system', return_value='Windows'):
+            return probes.collect()
+
+    def test_one_hidden_worker_serves_every_round(self):
+        worker = FakeWorker()
+        probes, seen = self.probes(worker)
+        for _ in range(3):
+            self.assertEqual(self.collect(probes), {'processes': []})
+        self.assertEqual(len(seen), 1)                        # started once, not once per round
+        self.assertEqual(worker.requests, [b'collect\n'] * 3)
+        argv, kw = seen[0]
+        self.assertEqual(argv[-2:], ['-Command', m.PROBE_WORKER])
+        self.assertEqual((kw['stdin'], kw['stdout']), (subprocess.PIPE, subprocess.PIPE))
         if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-            self.assertEqual(seen.get('creationflags'), subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(kw['creationflags'], subprocess.CREATE_NO_WINDOW)
+
+    def test_a_hung_round_is_dropped_and_the_next_round_starts_a_new_worker(self):
+        hung, fresh = FakeWorker(hang=True), FakeWorker()
+        probes, seen = self.probes(hung, fresh, timeout=0.2, first_timeout=0.2)
+        self.assertIsNone(self.collect(probes))
+        self.assertTrue(hung.killed)
+        self.assertEqual(self.collect(probes), {'processes': []})
+        self.assertEqual(len(seen), 2)
+
+    def test_a_dead_worker_is_replaced(self):
+        dead, fresh = FakeWorker(die=True), FakeWorker()
+        probes, seen = self.probes(dead, fresh)
+        self.assertIsNone(self.collect(probes))
+        self.assertEqual(self.collect(probes), {'processes': []})
+        self.assertEqual(len(seen), 2)
+
+    def test_bad_output_is_unknown_not_a_crash(self):
+        probes, _ = self.probes(FakeWorker(answer=b'not json\n'))
+        self.assertIsNone(self.collect(probes))
+
+    def test_worker_script_loops_until_stdin_closes_and_caches_the_slow_rule_list(self):
+        script = m.PROBE_WORKER
+        self.assertIn('[Console]::In.ReadLine()', script)
+        self.assertIn("if ($null -eq $line -or $line -eq 'exit') { break }", script)
+        self.assertIn('TotalSeconds -ge %d' % m.RULES_TTL_SECONDS, script)
+        self.assertIn('[Console]::Out.Flush()', script)
+        for query in ('Get-Process', 'Get-NetAdapter', 'Get-NetRoute', 'Get-NetFirewallProfile', 'Get-NetFirewallRule',
+                      'Get-DnsClientServerAddress', 'Get-NetAdapterBinding'):
+            self.assertIn(query, script)
+
+    def test_tray_does_not_call_one_slow_round_stopped(self):
+        tray = (ROOT / 'assets/monitor/tray.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('if ($age -gt [Math]::Max($interval * 3, 60)) {', tray)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell')
+    def test_real_worker_answers_repeatedly_and_exits_with_ccguard(self):
+        probes = m.WindowsProbes()
+        try:
+            first = probes.collect()
+            started = time.monotonic()
+            second = probes.collect()
+            warm = time.monotonic() - started
+            self.assertIsInstance(first, dict)
+            self.assertIsInstance(second, dict)
+            self.assertIn('processes', second)
+            self.assertLess(warm, 15)
+            proc = probes._proc
+            proc.stdin.close()
+            proc.wait(timeout=15)
+        finally:
+            probes.close()
 
 
 class Http(unittest.TestCase):
