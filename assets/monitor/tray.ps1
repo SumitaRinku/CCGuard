@@ -6,7 +6,8 @@
     [int]$IntervalSeconds = 5,
     [int]$CooldownSeconds = 120,
     [int]$OwnerPid = 0,
-    [string]$QuitFile = ''
+    [string]$QuitFile = '',
+    [string]$NoticeLog = ''
 )
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
@@ -36,8 +37,9 @@ $stateText = @{ ok = '正常'; degraded = '降级'; fail = '失效'; unknown = '
 $AppName = 'CCGuard'
 $AppId = 'CCGuard.Monitor'
 
-$script:previous = @{}
-$script:lastSent = @{}
+. (Join-Path $PSScriptRoot 'tray-alerts.ps1')
+$script:memory = New-AlertMemory
+$script:ownerGoneAt = $null
 $script:paused = $false
 $script:staleNotified = $false
 $script:currentState = ''
@@ -141,6 +143,11 @@ function New-ToastXml([string]$title, [string]$body) {
 }
 
 function Show-Notice($title, $body, $kind) {
+    # Test seam: with -NoticeLog the notice is appended to that file instead of being shown.
+    if ($NoticeLog) {
+        Add-Content -LiteralPath $NoticeLog -Encoding UTF8 -Value ('{0}|{1}|{2}|{3}' -f [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(), $kind, $title, $body)
+        return
+    }
     # Before the first toast Windows reports an empty setting, so only an explicit "Disabled..."
     # (user, policy or manifest) sends us back to the balloon. The Start menu shortcut is what
     # makes Windows accept the identity at all.
@@ -173,11 +180,26 @@ function Read-State {
 
 Set-TrayState 'unknown'
 
+$alertIcons = @{ error = [System.Windows.Forms.ToolTipIcon]::Error; warning = [System.Windows.Forms.ToolTipIcon]::Warning;
+                 info = [System.Windows.Forms.ToolTipIcon]::Info }
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = [Math]::Max(2000, $IntervalSeconds * 1000)
+# Read the state every 2 s whatever the collection interval, so a failure is shown as soon as the
+# monitor has written it.
+$timer.Interval = 2000
 $timer.add_Tick({
-    # The monitoring process is gone (crashed or killed): remove the icon instead of showing stale state.
+    # The monitoring process is gone. A normal exit closes the tray first, so getting here means it
+    # crashed or was killed: say so (protection is no longer watched), keep the icon 10 s so the
+    # notice can show, then leave.
     if ($OwnerPid -gt 0 -and -not (Get-Process -Id $OwnerPid -ErrorAction SilentlyContinue)) {
+        if ($null -eq $script:ownerGoneAt) {
+            $script:ownerGoneAt = [DateTime]::UtcNow
+            Set-TrayState 'unknown'
+            if (-not $script:paused) {
+                Show-Notice 'CCGuard 已停止' '监测进程意外退出，之后防护失效不会再提醒，请重新打开 CCGuard。' ([System.Windows.Forms.ToolTipIcon]::Error)
+            }
+            return
+        }
+        if (([DateTime]::UtcNow - $script:ownerGoneAt).TotalSeconds -lt 10) { return }
         $timer.Stop()
         $tray.Visible = $false
         $tray.Dispose()
@@ -213,32 +235,8 @@ $timer.add_Tick({
     $paused = $script:paused -or [bool]$state.paused
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
-    foreach ($check in $state.checks) {
-        $id = [string]$check.id
-        $after = [string]$check.state
-        $before = $script:previous[$id]
-        if ($before -eq $after) { continue }
-        $label = $labels[$id]
-        if (-not $label) { $label = $id }
-        if ($notifyStates -contains $after) {
-            $last = 0
-            if ($script:lastSent.ContainsKey($id)) { $last = [int64]$script:lastSent[$id] }
-            if ($now - $last -ge ($cooldown * 1000)) {
-                if (-not $paused) {
-                    if ($after -eq 'fail') {
-                        Show-Notice '防护告警' ($label + '：失效') ([System.Windows.Forms.ToolTipIcon]::Error)
-                    } else {
-                        Show-Notice '防护告警' ($label + '：' + $stateText[$after]) ([System.Windows.Forms.ToolTipIcon]::Warning)
-                    }
-                }
-                $script:lastSent[$id] = $now
-            }
-        } elseif ($after -eq 'ok' -and $before) {
-            if (-not $paused) {
-                Show-Notice '已恢复' ($label + ' 回到正常') ([System.Windows.Forms.ToolTipIcon]::Info)
-            }
-        }
-        $script:previous[$id] = $after
+    foreach ($alert in (Get-Alerts $script:memory $state $now $cooldown $notifyStates $labels $stateText)) {
+        if (-not $paused) { Show-Notice $alert.title $alert.body $alertIcons[[string]$alert.kind] }
     }
 })
 $timer.Start()

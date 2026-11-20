@@ -672,8 +672,87 @@ class RuntimeConfigDiscovery(unittest.TestCase):
         self.assertIsNone(m.find_runtime_config('flclash', {}))
 
 
+ALERT_RUNNER = r'''
+param([string]$AlertsPath, [string]$StepsPath)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+. $AlertsPath
+$labels = @{ proxy_core = '代理核心'; dns_hijack = 'DNS 接管' }
+$stateText = @{ ok = '正常'; degraded = '降级'; fail = '失效'; unknown = '未知' }
+$memory = New-AlertMemory
+$out = @()
+foreach ($step in (Get-Content -LiteralPath $StepsPath -Raw -Encoding UTF8 | ConvertFrom-Json)) {
+    $state = [pscustomobject]@{ checks = @($step.checks) }
+    $alerts = @(Get-Alerts $memory $state ([int64]$step.t) 120 @('fail', 'degraded') $labels $stateText)
+    $out += ,@($alerts | ForEach-Object { $_.kind + '|' + $_.title + '|' + $_.body })
+}
+ConvertTo-Json -InputObject $out -Compress -Depth 3
+'''
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell')
+class TrayAlerts(unittest.TestCase):
+    """Runs the tray's real alert rules (tray-alerts.ps1) over state sequences."""
+
+    def run_steps(self, steps):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            runner = folder / 'runner.ps1'
+            runner.write_bytes(b'\xef\xbb\xbf' + ALERT_RUNNER.encode('utf-8'))
+            data = folder / 'steps.json'
+            data.write_text(json.dumps(steps, ensure_ascii=False), encoding='utf-8')
+            proc = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                                   '-File', str(runner), '-AlertsPath', str(ROOT / 'assets/monitor/tray-alerts.ps1'),
+                                   '-StepsPath', str(data)], capture_output=True, timeout=120)
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode('utf-8', 'replace'))
+            out = json.loads(proc.stdout.decode('utf-8'))
+            return [[out] if isinstance(out, str) else out for out in out]
+
+    @staticmethod
+    def step(t, **states):
+        return {'t': t * 1000, 'checks': [{'id': key, 'state': value} for key, value in states.items()]}
+
+    def test_every_failure_is_reported_even_inside_the_cooldown(self):
+        out = self.run_steps([self.step(0, proxy_core='ok'), self.step(5, proxy_core='fail'),
+                              self.step(10, proxy_core='ok'), self.step(15, proxy_core='fail')])
+        self.assertEqual(out, [[], ['error|防护告警|代理核心：失效'], ['info|已恢复|代理核心 回到正常'],
+                               ['error|防护告警|代理核心：失效']])
+
+    def test_degraded_respects_the_cooldown_but_escalation_to_fail_does_not(self):
+        out = self.run_steps([self.step(0, dns_hijack='ok'), self.step(5, dns_hijack='degraded'),
+                              self.step(10, dns_hijack='ok'), self.step(15, dns_hijack='degraded'),
+                              self.step(20, dns_hijack='fail'), self.step(200, dns_hijack='ok'),
+                              self.step(205, dns_hijack='degraded')])
+        self.assertEqual(out, [[], ['warning|防护告警|DNS 接管：降级'], ['info|已恢复|DNS 接管 回到正常'], [],
+                               ['error|防护告警|DNS 接管：失效'], ['info|已恢复|DNS 接管 回到正常'],
+                               ['warning|防护告警|DNS 接管：降级']])
+
+    def test_already_failing_at_start_is_reported(self):
+        self.assertEqual(self.run_steps([self.step(0, proxy_core='fail', dns_hijack='ok')]),
+                         [['error|防护告警|代理核心：失效']])
+
+    def test_nothing_readable_for_30_seconds_is_reported_once_then_cleared(self):
+        blind = dict(proxy_core='unknown', dns_hijack='unknown')
+        out = self.run_steps([self.step(0, **blind), self.step(20, **blind), self.step(31, **blind),
+                              self.step(40, **blind), self.step(45, proxy_core='ok', dns_hijack='ok')])
+        self.assertEqual(out[:2], [[], []])
+        self.assertEqual(out[2], ['warning|无法判断防护状态|连续 30 秒读不到本机状态，防护失效可能无法及时提醒。'])
+        self.assertEqual(out[3], [])
+        self.assertEqual(out[4], ['info|已恢复|重新读到本机状态'])
+
+
 class TrayScript(unittest.TestCase):
     TRAY = (ROOT / 'assets/monitor/tray.ps1').read_text(encoding='utf-8-sig')
+
+    def test_alerts_are_wired_in_and_checked_every_two_seconds(self):
+        self.assertIn(". (Join-Path $PSScriptRoot 'tray-alerts.ps1')", self.TRAY)
+        self.assertIn('Get-Alerts $script:memory $state', self.TRAY)
+        self.assertIn('$timer.Interval = 2000', self.TRAY)
+        self.assertEqual((ROOT / 'assets/monitor/tray-alerts.ps1').read_bytes()[:3], b'\xef\xbb\xbf')
+
+    def test_a_crashed_monitor_is_announced_before_the_tray_leaves(self):
+        gone = self.TRAY.split('if ($OwnerPid -gt 0 -and -not (Get-Process -Id $OwnerPid', 1)[1].split('$state = Read-State', 1)[0]
+        self.assertLess(gone.index("Show-Notice 'CCGuard 已停止'"), gone.index('[System.Windows.Forms.Application]::Exit()'))
+        self.assertIn('TotalSeconds -lt 10', gone)
 
     def test_quit_file_is_passed(self):
         cfg = {'alerts': {'interval_seconds': 5, 'cooldown_seconds': 120}}

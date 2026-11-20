@@ -43,7 +43,7 @@ CCGuard never contacts Claude and does not change system settings: the 10 checks
 | **Claude autostart** | Finds Claude's app startup task (StartupTask), registry Run values and Startup-folder shortcuts; enabled ones can be turned off from the panel, the same as \"Disable\" in Task Manager |
 | **Claude Code checklist** | 11 items based on [ip.net.coffee's guide to using Claude Code reliably](https://ip.net.coffee/claude/claudecode.html): exit IP, TLS fingerprint, DNS, IPv6, rule order, keep-alive and more. Items that local checks, the exit score and the proxy config can answer are judged automatically; the rest come with how to check them yourself |
 | **Window + tray + web** | WebView panel (default) / tkinter panel (fallback), tray notifications, local `127.0.0.1` web page as an alternative |
-| **System notifications** | Alerts on state transitions with cooldown and recovery notices; can be paused |
+| **System notifications** | Any check turning to failed is announced at once (no cooldown); degraded is rate-limited; recovery is announced; a crashed monitor, unreadable system state or stalled monitoring are announced too; can be paused |
 | **Optional autostart** | A per-user Startup shortcut opens the panel hidden in the tray at login; off by default |
 | **Client presets** | FlClash, Clash Verge Rev, Clash Nyanpasu, Clash for Windows, Mihomo / Clash.Meta, sing-box, Hiddify, v2rayN, NekoRay / NekoBox |
 | **TUN auto-detection** | Matches adapter name / description fragments, so client upgrades usually need no config change |
@@ -78,9 +78,9 @@ The exit score covers the last piece: a datacenter IP, an IP flagged as VPN / pr
 
 ### 2. Install
 
-**Installer (recommended)**: download [`CCGuard-Setup-0.7.4.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.4/CCGuard-Setup-0.7.4.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
+**Installer (recommended)**: download [`CCGuard-Setup-0.7.5.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.5/CCGuard-Setup-0.7.5.exe) and run it. It needs neither Python nor administrator rights: it installs for the current user into `%LOCALAPPDATA%\Programs\CCGuard` with Start menu and desktop shortcuts, and can be removed from Settings > Apps. Uninstalling removes the program, its shortcuts and the autostart entry, and keeps your `monitor.json` and `history.jsonl`.
 
-The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.4.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
+The installer is built from source on GitHub Actions and attached to the release only after a silent install, self-test and uninstall pass; `SHA256SUMS-installer-0.7.5.txt` holds its hash. It is not code-signed, so SmartScreen may show "Windows protected your PC" on first run: choose "More info > Run anyway".
 
 **From source**: needs Python 3.10+ (the official installer normally includes tkinter). Download "Source code (zip)" from the release page or clone the repository:
 

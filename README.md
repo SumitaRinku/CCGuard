@@ -43,7 +43,7 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 | **Claude 开机自启** | 查出 Claude 的应用启动任务（StartupTask）、注册表 Run 项和启动文件夹快捷方式，开着的可在面板里直接关闭，效果与任务管理器“禁用”相同 |
 | **Claude Code 检查清单** | 按 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html) 整理 11 项：出口 IP、TLS 指纹、DNS、IPv6、分流规则顺序、长连接等。能从本机检查、出口评分和代理配置判断的项直接给出结果，其余给出自查方法 |
 | **窗口 + 托盘 + 网页** | WebView 面板（默认）／tkinter 面板（回退）、托盘通知、`127.0.0.1` 本地网页备选 |
-| **系统通知** | 状态跃迁时提醒，带冷却与恢复提示；可暂停 |
+| **系统通知** | 任一项失效立即提醒（不受冷却限制），降级带冷却，恢复也提示；监测进程意外退出、读不到本机状态、监测停止更新时也会提醒；可暂停 |
 | **可选开机自启** | 当前用户 Startup 快捷方式，登录后隐藏到托盘；默认关闭，可随时撤销 |
 | **多客户端预设** | FlClash、Clash Verge Rev、Clash Nyanpasu、Clash for Windows、Mihomo / Clash.Meta、sing-box、Hiddify、v2rayN、NekoRay / NekoBox |
 | **TUN 自动识别** | 按网卡名称 / 描述片段识别，客户端升级后通常不用改配置 |
@@ -78,9 +78,9 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 
 ### 2. 安装
 
-**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.4.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.4/CCGuard-Setup-0.7.4.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
+**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.5.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.5/CCGuard-Setup-0.7.5.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
 
-安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.4.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
+安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.5.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
 
 **源码运行**：需要 Python 3.10+（官方安装包通常自带 tkinter）。下载 Release 页的 “Source code (zip)” 或克隆仓库：
 

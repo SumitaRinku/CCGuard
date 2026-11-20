@@ -34,7 +34,7 @@ def self_test(output):
         except Exception as error:
             checks['import ' + name] = 'error: %s' % error
     for relative in ('panel.html', 'panel.css', 'panel.js', 'release-notes.json', 'fonts/NotoSansSC-VF.ttf', 'fonts/OFL.txt',
-                     'tray.ps1', 'notifier-shortcut.ps1',
+                     'tray.ps1', 'tray-alerts.ps1', 'notifier-shortcut.ps1',
                      'icon-ok.ico', 'icon-fail.ico', 'logo-ok.png', 'logo-unknown.png'):
         checks['asset ' + relative] = (monitor.ICON_DIR / relative).is_file()
     try:
