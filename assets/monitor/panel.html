@@ -15,7 +15,7 @@
     <nav aria-label="页面">
       <button class="nav active" data-page="status" type="button"><span>状态</span><b id="badge" class="badge" hidden></b></button>
       <button class="nav" data-page="exit" type="button"><span>出口</span></button>
-      <button class="nav" data-page="claude" type="button"><span>Claude</span><b id="claude-badge" class="badge degraded" hidden>后台</b></button>
+      <button class="nav" data-page="claude" type="button"><span>防漏与清单</span><b id="claude-badge" class="badge degraded" hidden>后台</b></button>
       <button class="nav" data-page="history" type="button"><span>历史</span></button>
       <button class="nav" data-page="log" type="button"><span>日志</span></button>
       <button class="nav" data-page="settings" type="button"><span>设置</span></button>
@@ -28,7 +28,7 @@
   <main>
     <header class="top">
       <div>
-        <h1>本机防护</h1>
+        <h1 id="page-title">本机防护</h1>
         <p id="subtitle" class="subtitle">正在读取…</p>
       </div>
       <div class="top-actions">
@@ -42,6 +42,11 @@
         <div id="banner" class="banner unknown" aria-live="polite">
           <span id="headline" class="headline">正在读取…</span>
           <span id="detail" class="detail"></span>
+        </div>
+        <div id="leak-alert" class="banner fail leak-alert" role="alert" hidden>
+          <span id="leak-text" class="detail"></span>
+          <span class="spacer"></span>
+          <button id="leak-close-claude" class="btn danger" type="button">立即关闭 Claude</button>
         </div>
         <div id="cards" class="cards"></div>
       </div>
@@ -104,8 +109,13 @@
         </div>
         <div class="panel checklist-card">
           <div class="claude-head">
-            <h3>Claude Code 稳定使用检查</h3>
+            <div>
+              <h3>Claude Code 稳定使用检查</h3>
+              <div id="checklist-summary" class="subtitle"></div>
+            </div>
             <span class="spacer"></span>
+            <button id="checklist-score" class="btn" type="button" hidden>去检测出口</button>
+            <button id="checklist-expand" class="link" type="button" hidden>展开需调整项</button>
             <button id="guide-open" class="link" type="button">查看完整指南</button>
           </div>
           <ol id="checklist" class="checklist"></ol>
@@ -130,6 +140,7 @@
     <section id="page-log" class="page">
       <div class="toolbar">
         <span class="spacer"></span>
+        <button id="copy-diag" class="btn" type="button">复制诊断摘要</button>
         <button id="copy-log" class="btn" type="button">复制全部</button>
         <button id="clear-log" class="btn" type="button">清空</button>
       </div>
@@ -138,6 +149,21 @@
 
     <section id="page-settings" class="page">
       <form id="settings" class="panel form" autocomplete="off">
+        <div class="field"><label for="client">代理客户端</label>
+          <select id="client"></select></div>
+        <div class="field"><label for="config-format">配置格式</label>
+          <select id="config-format">
+            <option value="auto">自动识别</option>
+            <option value="clash">Clash / Mihomo (YAML)</option>
+            <option value="sing-box">sing-box (JSON)</option>
+            <option value="xray">Xray / v2rayN (JSON)</option>
+          </select></div>
+        <div class="field"><label for="runtime-config">运行配置</label>
+          <div class="input-row">
+            <input id="runtime-config" type="text" placeholder="留空时自动查找 FlClash／Clash Verge Rev 默认位置">
+            <button id="detect-runtime" class="btn" type="button">自动查找</button>
+            <button id="browse-runtime" class="btn" type="button">浏览…</button>
+          </div></div>
         <div class="field"><label for="interval">采集间隔</label>
           <input id="interval" type="number" min="2" max="3600" step="1" required><span class="unit">秒</span></div>
         <div class="field"><label for="cooldown">通知冷却</label>
@@ -165,6 +191,14 @@
           <div>
             <div class="about-name">CCGuard <span id="about-version"></span></div>
             <div id="update-status" class="subtitle">点“检查更新”向 GitHub 查询是否有新版本</div>
+            <div class="about-meta">
+              <span>作者 <b id="about-author">SumitaRinku</b></span>
+              <span>许可 <b id="about-license">GPL-3.0-only</b></span>
+              <button id="about-repo" class="link" type="button">GitHub 仓库</button>
+              <button id="about-issues" class="link" type="button">问题反馈</button>
+              <button id="about-releases" class="link" type="button">发布页</button>
+              <button id="about-copy-diag" class="link" type="button">复制诊断摘要</button>
+            </div>
           </div>
           <span class="spacer"></span>
           <button id="update-download" class="btn primary" type="button" hidden>去下载</button>

@@ -110,7 +110,31 @@ def banner_text(overall, stamp, rows):
     return OVERALL_TEXT.get(overall, OVERALL_TEXT['unknown']), detail
 
 
-def validate_settings(interval, cooldown, notify_states):
+def validate_proxy_settings(client=None, config_format=None, runtime_config=None):
+    """Validate optional proxy fields editable from the panel; None leaves the field unchanged."""
+    clean_client = clean_format = clean_runtime = None
+    if client is not None:
+        value = str(client).strip()
+        if value not in ('', 'custom') and value not in engine.CLIENT_PRESETS:
+            raise engine.MonitorError('proxy.client 不是已知的客户端预设。')
+        clean_client = value or 'custom'
+    if config_format is not None:
+        value = str(config_format).strip()
+        if value not in ('auto', 'clash', 'sing-box', 'xray'):
+            raise engine.MonitorError('config_format 只能是 auto、clash、sing-box 或 xray。')
+        clean_format = value
+    if runtime_config is not None:
+        value = str(runtime_config).strip().strip('"').strip("'")
+        if value:
+            if not engine._text(value, 260) or not Path(value).is_absolute():
+                raise engine.MonitorError('代理运行配置必须是绝对路径，或留空自动查找。')
+            if not Path(value).is_file():
+                raise engine.MonitorError('找不到该运行配置文件，请核对路径或留空自动查找。')
+        clean_runtime = value
+    return clean_client, clean_format, clean_runtime
+
+
+def validate_settings(interval, cooldown, notify_states, client=None, config_format=None, runtime_config=None):
     try:
         interval = int(interval)
         cooldown = int(cooldown)
@@ -123,15 +147,26 @@ def validate_settings(interval, cooldown, notify_states):
     states = [name for name, enabled in notify_states.items() if enabled]
     if any(name not in engine.ALERT_STATES for name in states):
         raise engine.MonitorError('通知项只能是失效、降级或未知。')
+    if client is not None or config_format is not None or runtime_config is not None:
+        validate_proxy_settings(client, config_format, runtime_config)
     return interval, cooldown, states
 
 
-def apply_settings(cfg, interval, cooldown, notify_states, paused=False):
-    interval, cooldown, states = validate_settings(interval, cooldown, notify_states)
+def apply_settings(cfg, interval, cooldown, notify_states, paused=False,
+                   client=None, config_format=None, runtime_config=None):
+    interval, cooldown, states = validate_settings(
+        interval, cooldown, notify_states, client, config_format, runtime_config)
+    clean_client, clean_format, clean_runtime = validate_proxy_settings(client, config_format, runtime_config)
     cfg['alerts']['interval_seconds'] = interval
     cfg['alerts']['cooldown_seconds'] = cooldown
     cfg['alerts']['notify_states'] = states
     cfg['alerts']['paused'] = bool(paused)
+    if clean_client is not None:
+        cfg['proxy']['client'] = clean_client
+    if clean_format is not None:
+        cfg['proxy']['config_format'] = clean_format
+    if clean_runtime is not None:
+        cfg['proxy']['runtime_config'] = clean_runtime
     return cfg
 
 

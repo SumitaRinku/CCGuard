@@ -136,7 +136,7 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 
 ## 通知
 
-- **独立窗口**：左侧栏导航 + 状态页卡片（绿/橙/红/灰）+ 日志页；设置页用 ttk 控件调采集间隔、通知冷却、通知项和暂停提醒，并可「打开配置」直接编辑 JSON。「保存到配置」先完整校验再原子替换文件，校验不过时原配置不动；`alerts.paused` 是可选布尔值。左侧栏「开机自启」是显式开关，默认关闭。
+- **独立窗口**：WebView 面板左侧栏导航（状态 / 出口 / 防漏与清单 / 历史 / 日志 / 设置 / 关于），顶部标题随页面切换更新；状态页在`防护已失效`且 Claude 仍在运行时显示联动提醒并提供一键关闭；日志页与关于页支持一键复制脱敏诊断摘要（不含 IP、路径或节点名）。WebView 设置页可直接调整客户端预设、配置格式、运行配置路径（支持自动查找与浏览选择）以及采集间隔、通知冷却、通知项和暂停提醒，并可「打开配置」直接编辑 JSON。tkinter 回退面板保留状态、日志和通知设置页。「保存到配置」先完整校验再原子替换文件，校验不过时原配置不动；`alerts.paused` 是可选布尔值。左侧栏「开机自启」是显式开关，默认关闭。
 - **关闭窗口**：用 `--tray` 启动且托盘仍在时，可选隐藏到托盘、直接关闭或取消；没有托盘时只提供关闭或取消，避免窗口隐藏后无法找回。
 - **托盘**：`--tray` 启动后常驻，每 2 秒读取监测进程写出的 `state.json`；图标与悬停文字按整体状态换色换字。通知规则（`tray-alerts.ps1`）：
   - 任一检查变为**失效**立即通知，不受冷却限制，包括恢复后再次失效、从降级升级为失效；
@@ -200,8 +200,8 @@ python scripts/monitor.py notifier-status         # 查看是否已注册
 
 Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉窗口后通常仍在后台运行，Claude Code 会话也由它托管。安装包还注册了 Windows 服务 `CoworkVMService`（显示名 Claude，以 LocalSystem 运行，开机自动启动，程序为包内的 `cowork-svc.exe`）。以为它已经退出、随后关掉代理或切换网络，后台的 Claude 就会用新网络连出去。
 
-- **使用建议**：Claude 页写明建议使用 Claude 桌面版（Desktop），不建议使用命令行版 Claude Code（CLI）。
-- **运行状态**：每 5 秒读一次进程列表（Toolhelp 快照 + 进程映像路径），路径在 `\WindowsApps\Claude_` 或经典安装的 `\AnthropicClaude\` 下的算 Claude 桌面版，路径含 `\claude-code\` 的子进程算 Claude Code 会话；再看这些进程有没有可见窗口。`CoworkVMService` 在运行也算 Claude 在运行。没有窗口但在运行时，面板顶部显示“Claude 后台运行”，侧栏“Claude”页标出“后台”。只看进程，不连接 Claude，不读它的数据。单独安装的 Claude Code 命令行不在其中。
+- **使用建议**：防漏与清单页写明建议使用 Claude 桌面版（Desktop），不建议使用命令行版 Claude Code（CLI）。
+- **运行状态**：每 5 秒读一次进程列表（Toolhelp 快照 + 进程映像路径），路径在 `\WindowsApps\Claude_` 或经典安装的 `\AnthropicClaude\` 下的算 Claude 桌面版，路径含 `\claude-code\` 的子进程算 Claude Code 会话；再看这些进程有没有可见窗口。`CoworkVMService` 在运行也算 Claude 在运行。没有窗口但在运行时，面板顶部显示“Claude 后台运行”，侧栏“防漏与清单”页标出“后台”。只看进程，不连接 Claude，不读它的数据。单独安装的 Claude Code 命令行不在其中。
 - **关闭**：确认后依次：对 Claude 的根进程执行 `taskkill /T /F`，结束整棵进程树，包括它托管的 Claude Code 会话；按进程的包标识结束剩下的 Claude 附属进程（如它的 RuntimeBroker）；用 `sc stop` 停止 `CoworkVMService`（服务的访问控制允许已登录用户停止，不需要管理员）。未保存的输入会丢失。
 - **开机自启**：查三处，只列名字含 Claude 或 Anthropic 的项：
   1. MSIX 应用启动任务：`HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\<包名>\<任务名>` 的 `State`（0 已禁用、1 用户已禁用、2 已启用、3 策略禁用、4 策略启用）。关闭时写 `State=1`，与“设置 → 应用 → 启动”里关掉开关相同；3、4 由组策略控制，不改。
@@ -212,7 +212,7 @@ Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉�
 <a id="claude-code-checklist"></a>
 ## Claude Code 检查清单
 
-条目参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，结合浏览器与客户端风控指纹特征整理，共 13 项。每项写明为什么、怎么做，能判断的给出“正常／需调整／未知”，不能从本机判断的标“自查”。
+条目参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，结合浏览器与客户端风控指纹特征整理，共 13 项。每项写明为什么、怎么做，能判断的给出“正常／需调整／未知”，不能从本机判断的标“自查”；顶部汇总各状态数量，未测出口时提供“去检测出口”按钮，存在需调整项时支持一键展开。
 
 | 项 | 依据 |
 | --- | --- |
@@ -242,6 +242,7 @@ Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉�
 <a id="updates"></a>
 ## 检查更新与安装
 
+- **关于页**：显示当前版本、作者（`SumitaRinku`）、开源许可（`GPL-3.0-only`）以及 GitHub 仓库、问题反馈、发布页和复制诊断摘要入口。
 - 手动：“关于”页点“检查更新”，只读 GitHub 上本仓库的发布列表。GitHub 接口未登录时同一 IP 每小时只给 60 次，代理出口 IP 常被多人共用，可能返回 “rate limit exceeded”；这时改读不受该限制的普通页面：`github.com/SumitaRinku/CCGuard/releases/latest` 的跳转给出最新版本号，该版本附带的 `release-notes.json`（raw.githubusercontent.com）给出更新日志，安装程序和校验文件按发布的固定文件名下载，照样校验 SHA-256。
 - 自动（可选，默认关闭）：勾选后每天最多检查一次，时间记在配置旁的 `prefs.json`，有新版本时面板顶部提示。
 - 安装（仅安装版）：点“下载并安装”并确认后，从本仓库 Release 下载 `CCGuard-Setup-<版本>.exe` 和 `SHA256SUMS-installer-<版本>.txt`，哈希一致才运行；CCGuard 先退出，安装程序以 `/SILENT /RELAUNCH` 静默覆盖安装后重新打开 CCGuard。只接受本仓库发布页下的地址和规范的文件名，哈希不符时删除下载、不安装。安装程序存放在配置旁的 `updates` 目录。

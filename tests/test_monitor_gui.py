@@ -65,6 +65,26 @@ class Settings(unittest.TestCase):
         with self.assertRaises(engine.MonitorError):
             gui.validate_settings(5, 0, {'ok': True})
 
+    def test_applies_and_validates_proxy_fields(self):
+        runtime = Path(self.tmp.name) / 'config.yaml'
+        runtime.write_text('mode: rule\n', encoding='utf-8')
+        gui.apply_settings(self.cfg, 10, 30, {'fail': True}, False,
+                           client='flclash', config_format='clash', runtime_config=f' "{runtime}" ')
+        self.assertEqual(self.cfg['proxy']['client'], 'flclash')
+        self.assertEqual(self.cfg['proxy']['config_format'], 'clash')
+        self.assertEqual(self.cfg['proxy']['runtime_config'], str(runtime))
+        gui.apply_settings(self.cfg, 10, 30, {'fail': True}, False, client='', runtime_config='')
+        self.assertEqual(self.cfg['proxy']['client'], 'custom')
+        self.assertEqual(self.cfg['proxy']['runtime_config'], '')
+
+        before = json.dumps(self.cfg)
+        for bad in ({'client': 'unknown-client'}, {'config_format': 'toml'},
+                    {'runtime_config': 'relative.yaml'},
+                    {'runtime_config': str(Path(self.tmp.name) / 'missing.yaml')}):
+            with self.assertRaises(engine.MonitorError):
+                gui.apply_settings(self.cfg, 15, 60, {'fail': True}, True, **bad)
+            self.assertEqual(json.dumps(self.cfg), before)
+
 
 class SaveConfig(unittest.TestCase):
     """Regression: saving from the panel used to write a config that load_config then rejected."""

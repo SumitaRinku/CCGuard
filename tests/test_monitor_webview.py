@@ -132,6 +132,37 @@ class Settings(Base):
         view = self.api.settings()
         self.assertEqual(view['interval'], 5)
         self.assertEqual(view['notify'], {'fail': True, 'degraded': True, 'unknown': False})
+        self.assertEqual(view['client'], 'custom')
+        self.assertEqual(view['config_format'], 'auto')
+        self.assertEqual(view['runtime_config'], str(self.dir / 'config.yaml'))
+        self.assertTrue(any(item['id'] == 'flclash' for item in view['clients']))
+
+    def test_apply_updates_proxy_fields_and_detects_or_browses_runtime_config(self):
+        runtime = self.dir / 'runtime.yaml'
+        runtime.write_text('mode: rule\n', encoding='utf-8')
+        form = dict(self.FORM, client='flclash', config_format='clash', runtime_config=str(runtime))
+        self.assertTrue(self.api.apply(form, True)['ok'])
+        loaded = engine.load_config(self.path)
+        self.assertEqual(loaded['proxy']['client'], 'flclash')
+        self.assertEqual(loaded['proxy']['config_format'], 'clash')
+        self.assertEqual(loaded['proxy']['runtime_config'], str(runtime))
+
+        bad = dict(form, runtime_config=str(self.dir / 'absent.yaml'))
+        self.assertFalse(self.api.apply(bad, True)['ok'])
+        self.assertEqual(engine.load_config(self.path)['proxy']['runtime_config'], str(runtime))
+
+        with patch.object(engine, 'find_runtime_config', return_value=('FlClash', runtime)):
+            found = self.api.detect_runtime_config('flclash')
+            self.assertTrue(found['ok'])
+            self.assertEqual(found['path'], str(runtime))
+        with patch.object(engine, 'find_runtime_config', return_value=None):
+            self.assertFalse(self.api.detect_runtime_config('flclash')['ok'])
+
+        self.assertEqual(self.api.browse_runtime_config(), {'ok': False, 'path': ''})
+        fake_win = types.SimpleNamespace(create_file_dialog=lambda *args, **kw: (str(runtime),))
+        self.api._bind(fake_win, None)
+        with patch.dict(sys.modules, {'webview': types.SimpleNamespace(FileDialog=types.SimpleNamespace(OPEN=10))}):
+            self.assertEqual(self.api.browse_runtime_config(), {'ok': True, 'path': str(runtime)})
 
     def test_apply_changes_runtime_only(self):
         before = self.path.read_bytes()
@@ -339,6 +370,23 @@ class AboutAndUpdate(Base):
         import version
         self.assertEqual(about['version'], version.__version__)
         self.assertEqual(about['notes'][0]['version'], version.__version__)
+        self.assertEqual(about['author'], 'SumitaRinku')
+        self.assertEqual(about['license'], 'GPL-3.0-only')
+        self.assertEqual(about['repo_url'], 'https://github.com/SumitaRinku/CCGuard')
+        self.assertEqual(about['issues_url'], 'https://github.com/SumitaRinku/CCGuard/issues')
+
+    def test_open_repo_link_allows_only_this_repo(self):
+        opened = []
+        self.api._open_url = lambda url: opened.append(url) or True
+        self.assertTrue(self.api.open_repo_link('repo')['ok'])
+        self.assertTrue(self.api.open_repo_link('issues')['ok'])
+        self.assertTrue(self.api.open_repo_link('releases')['ok'])
+        self.assertFalse(self.api.open_repo_link('evil')['ok'])
+        self.assertEqual(opened, [
+            'https://github.com/SumitaRinku/CCGuard',
+            'https://github.com/SumitaRinku/CCGuard/issues',
+            'https://github.com/SumitaRinku/CCGuard/releases',
+        ])
 
     def test_check_update_logs_the_outcome(self):
         self.api._update_check = lambda: {'ok': True, 'update': True, 'latest': '9.9.9', 'releases': []}
@@ -423,6 +471,28 @@ class ClaudeAndUpdates(Base):
         self.api._ip = {'ok': True, 'score': 99, 'facts': {'kind': '住宅', 'flags': [], 'country_code': 'JP', 'location': 'JP'}}
         items = {item['id']: item['status'] for item in self.api.claude_code_checklist()['items']}
         self.assertEqual((items['dns_proxy'], items['exit_ip'], items['network_path']), ('ok', 'ok', 'ok'))
+
+    def test_diagnostic_summary_omits_ips_paths_and_secrets(self):
+        secret_cfg = self.dir / 'secret-node.yaml'
+        secret_cfg.write_text('mode: rule\nproxies:\n  - {name: TokyoSecretNode}\n', encoding='utf-8')
+        self.cfg['proxy']['runtime_config'] = str(secret_cfg)
+        self.store.state = {
+            'overall': 'fail',
+            'checked_at': 1000,
+            'checks': [{'id': 'proxy_core', 'state': 'fail', 'code': 'PROXY_CORE_MISSING',
+                        'evidence': ['198.51.100.2 ' + str(secret_cfg)]}],
+        }
+        self.api._claude_state = {'running': True, 'background': True}
+        self.api._ip = {'ok': True, 'score': 88, 'label': '纯净', 'ip': '203.0.*.*',
+                        'facts': {'kind': '住宅', 'flags': ['VPN'], 'country_code': 'JP', 'location': 'Tokyo'}}
+        summary = self.api.diagnostic_summary()
+        self.assertIn('CCGuard v', summary)
+        self.assertIn('Claude 状态: 后台运行', summary)
+        self.assertIn('proxy_core: fail (PROXY_CORE_MISSING)', summary)
+        self.assertIn('exit_ip: warn', summary)
+        self.assertIn('出口评分: 信任分 88（纯净，住宅，标记：VPN）', summary)
+        for leak in ('203.0', '198.51', 'TokyoSecretNode', 'secret-node', str(self.dir)):
+            self.assertNotIn(leak, summary)
 
     def test_auto_update_toggle_and_daily_check(self):
         self.assertFalse(self.api.update_prefs()['auto_update_check'])

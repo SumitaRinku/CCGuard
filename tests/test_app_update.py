@@ -170,6 +170,11 @@ class Check(unittest.TestCase):
         for bad in ('https://github.com/SumitaRinku/CCGuard', 'https://github.com/SumitaRinku/CCGuard/releasesX',
                     'https://evil.example/' + PAGE, None, 5):
             self.assertFalse(update.allowed_url(bad), bad)
+        self.assertTrue(update.allowed_repo_url(update.REPO_URL))
+        self.assertTrue(update.allowed_repo_url(update.ISSUES_URL))
+        self.assertTrue(update.allowed_repo_url(PAGE))
+        for bad in ('https://github.com/SumitaRinku/CCGuard/settings', 'https://evil.example/x', None):
+            self.assertFalse(update.allowed_repo_url(bad), bad)
 
 
 class Install(unittest.TestCase):

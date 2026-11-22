@@ -5,11 +5,24 @@ const LOG_LIMIT = 300;
 const STATES = ['ok', 'degraded', 'fail', 'unknown'];
 const STATE_TEXT = { ok: '正常', degraded: '降级', fail: '失效', unknown: '未知' };
 const PAGES = ['status', 'exit', 'claude', 'history', 'log', 'settings', 'about'];
+const PAGE_TITLES = {
+  status: '本机防护',
+  exit: '出口评分',
+  claude: '防漏与检查清单',
+  history: '状态历史',
+  log: '运行日志',
+  settings: '设置',
+  about: '关于',
+};
 const CHECK_TEXT = { ok: '正常', warn: '需调整', unknown: '未知', manual: '自查' };
 // The status page sets the height; other pages (Claude, history, log) need more room, so the
 // window never starts smaller than this. Both are capped to the screen by the bridge.
 const DESIGN_WIDTH = 1000;
 const MIN_HEIGHT = 760;
+
+function pageTitle(page) {
+  return PAGE_TITLES[page] || '本机防护';
+}
 
 function stateClass(value) {
   return STATES.includes(value) ? value : 'unknown';
@@ -126,6 +139,32 @@ function checkClass(status) {
   return { ok: 'ok', warn: 'degraded', unknown: 'unknown', manual: 'manual' }[status] || 'unknown';
 }
 
+function checklistSummary(items) {
+  const counts = { ok: 0, warn: 0, unknown: 0, manual: 0 };
+  let needScore = false;
+  for (const entry of items || []) {
+    if (Object.prototype.hasOwnProperty.call(counts, entry.status)) counts[entry.status] += 1;
+    else counts.unknown += 1;
+    if (entry.id === 'exit_ip' && entry.status === 'unknown') needScore = true;
+  }
+  const parts = [];
+  if (counts.ok) parts.push(counts.ok + ' 项正常');
+  if (counts.warn) parts.push(counts.warn + ' 项需调整');
+  if (counts.unknown) parts.push(counts.unknown + ' 项未知');
+  if (counts.manual) parts.push(counts.manual + ' 项自查');
+  return { counts, text: parts.join('、'), needScore, hasWarn: counts.warn > 0 };
+}
+
+function leakRiskView(overall, claude) {
+  if (overall !== 'fail' || !claude || !claude.running) return { show: false, text: '' };
+  return {
+    show: true,
+    text: claude.background
+      ? '防护已失效，Claude 仍在后台运行，存在直连漏出风险'
+      : '防护已失效，Claude 正在运行，存在直连漏出风险',
+  };
+}
+
 function mergeLog(rows, delta, limit) {
   const merged = delta.rebuild ? delta.rows.slice() : rows.concat(delta.rows);
   return merged.length > limit ? merged.slice(merged.length - limit) : merged;
@@ -151,11 +190,13 @@ function bind() {
   let active = 'status';
   let toastTimer = 0;
   let lastOverall = '';
+  let lastSnapOverall = 'unknown';
   let historyWindow = 86400;
   let historyTimer = 0;
   let openCheck = null;
   let openKey = '';
   let fitted = false;
+  let warnExpanded = false;
 
   Promise.resolve(api().about()).then(about => { $('brand-version').textContent = 'v' + about.version; }, () => {});
 
@@ -167,9 +208,20 @@ function bind() {
     toastTimer = setTimeout(() => { node.hidden = true; }, 3500);
   }
 
+  function copyToClipboard(text, message) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    const done = document.execCommand('copy');
+    area.remove();
+    toast(done ? message : '复制失败');
+  }
+
   function select(page) {
     if (!PAGES.includes(page)) return;
     active = page;
+    $('page-title').textContent = pageTitle(page);
     for (const button of document.querySelectorAll('.nav')) button.classList.toggle('active', button.dataset.page === page);
     for (const section of document.querySelectorAll('.page')) section.classList.toggle('active', section.id === 'page-' + page);
     if (page !== 'status') closeDrawer();
@@ -318,6 +370,8 @@ function bind() {
   async function loadAbout() {
     const about = await api().about();
     $('about-version').textContent = about.version;
+    $('about-author').textContent = about.author || 'SumitaRinku';
+    $('about-license').textContent = about.license || 'GPL-3.0-only';
     loadUpdatePrefs();
     const box = $('changelog');
     box.textContent = '';
@@ -436,8 +490,16 @@ function bind() {
   function renderChecklist(data) {
     const list = $('checklist');
     list.textContent = '';
+    const summary = checklistSummary(data.items);
+    $('checklist-summary').textContent = summary.text;
+    $('checklist-score').hidden = !summary.needScore;
+    const expand = $('checklist-expand');
+    expand.hidden = !summary.hasWarn;
+    warnExpanded = false;
+    expand.textContent = '展开需调整项';
     for (const entry of data.items) {
       const item = document.createElement('li');
+      item.dataset.warn = entry.status === 'warn' ? '1' : '0';
       const details = document.createElement('details');
       const summary = document.createElement('summary');
       const title = document.createElement('span');
@@ -471,11 +533,18 @@ function bind() {
     renderChecklist(await api().claude_code_checklist());
   }
 
+  function renderLeakAlert(overall, claude) {
+    const view = leakRiskView(overall, claude);
+    $('leak-alert').hidden = !view.show;
+    $('leak-text').textContent = view.text;
+  }
+
   async function closeClaude() {
     const ok = await confirmAction('关闭 Claude？', '会结束 Claude 的所有窗口和后台进程，并停止它的后台服务，正在运行的 Claude Code 任务也会中断。', '关闭 Claude');
     if (!ok) return;
     const result = await act(api().close_claude());
     renderClaudeStatus(result.status);
+    renderLeakAlert(lastSnapOverall, result.status);
   }
 
   async function loadUpdatePrefs() {
@@ -538,11 +607,13 @@ function bind() {
 
   function render(snap) {
     const cls = stateClass(snap.overall);
+    lastSnapOverall = snap.overall;
     $('subtitle').textContent = subtitleText(snap);
     $('banner').className = 'banner ' + cls;
     $('headline').textContent = snap.headline;
     $('detail').textContent = snap.detail;
     $('detail').title = snap.detail;
+    renderLeakAlert(snap.overall, snap.claude);
     const badge = $('badge');
     badge.hidden = !snap.problems;
     badge.textContent = snap.problems || '';
@@ -597,6 +668,19 @@ function bind() {
 
   async function loadSettings() {
     const s = await api().settings();
+    const selectClient = $('client');
+    if (Array.isArray(s.clients) && s.clients.length) {
+      selectClient.textContent = '';
+      for (const item of s.clients) {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.label;
+        selectClient.append(option);
+      }
+    }
+    selectClient.value = s.client || 'custom';
+    $('config-format').value = s.config_format || 'auto';
+    $('runtime-config').value = s.runtime_config || '';
     $('interval').value = s.interval;
     $('cooldown').value = s.cooldown;
     for (const box of document.querySelectorAll('input[name=notify]')) box.checked = !!s.notify[box.value];
@@ -606,7 +690,15 @@ function bind() {
   function form() {
     const notify = {};
     for (const box of document.querySelectorAll('input[name=notify]')) notify[box.value] = box.checked;
-    return { interval: $('interval').value, cooldown: $('cooldown').value, notify, paused: $('paused').checked };
+    return {
+      client: $('client').value,
+      config_format: $('config-format').value,
+      runtime_config: $('runtime-config').value,
+      interval: $('interval').value,
+      cooldown: $('cooldown').value,
+      notify,
+      paused: $('paused').checked,
+    };
   }
 
   async function act(promise) {
@@ -652,23 +744,37 @@ function bind() {
   };
   $('auto-update').onchange = event => act(api().set_auto_update(event.target.checked));
   $('claude-close').onclick = closeClaude;
+  $('leak-close-claude').onclick = closeClaude;
   $('claude-pill').onclick = () => select('claude');
   $('startup-settings').onclick = () => act(api().open_startup_settings());
+  $('checklist-score').onclick = () => { select('exit'); runScore(); };
+  $('checklist-expand').onclick = () => {
+    warnExpanded = !warnExpanded;
+    for (const details of $('checklist').querySelectorAll('li[data-warn="1"] details')) details.open = warnExpanded;
+    $('checklist-expand').textContent = warnExpanded ? '收起需调整项' : '展开需调整项';
+  };
   $('guide-open').onclick = () => act(api().open_claude_code_guide());
+  $('about-repo').onclick = () => act(api().open_repo_link('repo'));
+  $('about-issues').onclick = () => act(api().open_repo_link('issues'));
+  $('about-releases').onclick = () => act(api().open_repo_link('releases'));
+  async function copyDiagnostic() {
+    copyToClipboard(await api().diagnostic_summary(), '已复制诊断摘要');
+  }
+  $('copy-diag').onclick = copyDiagnostic;
+  $('about-copy-diag').onclick = copyDiagnostic;
   $('drawer-close').onclick = closeDrawer;
+  $('detect-runtime').onclick = async () => {
+    const result = await act(api().detect_runtime_config($('client').value));
+    if (result && result.ok && result.path) $('runtime-config').value = result.path;
+  };
+  $('browse-runtime').onclick = async () => {
+    const result = await api().browse_runtime_config();
+    if (result && result.ok && result.path) $('runtime-config').value = result.path;
+  };
   $('settings').onsubmit = event => { event.preventDefault(); act(api().apply(form(), false)); };
   $('save').onclick = () => act(api().apply(form(), true));
   $('open-config').onclick = () => act(api().open_config());
-  $('copy-log').onclick = async () => {
-    const text = await api().log_text();
-    const area = document.createElement('textarea');
-    area.value = text;
-    document.body.append(area);
-    area.select();
-    const done = document.execCommand('copy');
-    area.remove();
-    toast(done ? '已复制' : '复制失败');
-  };
+  $('copy-log').onclick = async () => { copyToClipboard(await api().log_text(), '已复制'); };
   $('clear-log').onclick = async () => {
     const result = await act(api().clear_log());
     logRows = [];
@@ -712,7 +818,7 @@ function bind() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { stateClass, subtitleText, barBlocks, codeParts, clock, scoreView, tzView, zoneOffset, updateView, claudeView, checkClass, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
+  module.exports = { stateClass, pageTitle, PAGE_TITLES, subtitleText, barBlocks, codeParts, clock, scoreView, tzView, zoneOffset, updateView, claudeView, checklistSummary, leakRiskView, checkClass, mergeLog, logLine, base64ToBytes, LOG_LIMIT };
 } else if (typeof window !== 'undefined') {
   if (window.pywebview && window.pywebview.api) bind();
   else window.addEventListener('pywebviewready', bind, { once: true });

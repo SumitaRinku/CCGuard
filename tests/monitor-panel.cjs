@@ -75,6 +75,33 @@ assert.equal(panel.checkClass('warn'), 'degraded');
 assert.equal(panel.checkClass('manual'), 'manual');
 assert.equal(panel.checkClass('weird'), 'unknown');
 
+assert.equal(panel.pageTitle('status'), '本机防护');
+assert.equal(panel.pageTitle('claude'), '防漏与检查清单');
+assert.equal(panel.pageTitle('about'), '关于');
+assert.equal(panel.pageTitle('unknown'), '本机防护');
+
+const sumNeed = panel.checklistSummary([
+  { id: 'exit_ip', status: 'unknown' },
+  { id: 'tls_fingerprint', status: 'warn' },
+  { id: 'dns_proxy', status: 'ok' },
+  { id: 'device_env', status: 'manual' },
+]);
+assert.equal(sumNeed.text, '1 项正常、1 项需调整、1 项未知、1 项自查');
+assert.equal(sumNeed.needScore, true);
+assert.equal(sumNeed.hasWarn, true);
+
+const sumOk = panel.checklistSummary([{ id: 'exit_ip', status: 'ok' }, { id: 'dns_proxy', status: 'ok' }]);
+assert.equal(sumOk.text, '2 项正常');
+assert.equal(sumOk.needScore, false);
+assert.equal(sumOk.hasWarn, false);
+
+assert.equal(panel.leakRiskView('ok', { running: true, background: true }).show, false);
+assert.equal(panel.leakRiskView('fail', { running: false, background: false }).show, false);
+assert.equal(panel.leakRiskView('fail', { running: true, background: true }).text,
+  '防护已失效，Claude 仍在后台运行，存在直连漏出风险');
+assert.equal(panel.leakRiskView('fail', { running: true, background: false }).text,
+  '防护已失效，Claude 正在运行，存在直连漏出风险');
+
 assert.equal(panel.logLine({time: '12:00:00', kind: '状态', text: 'x'}), '12:00:00  [状态]  x');
 assert.deepEqual(Array.from(panel.base64ToBytes(Buffer.from([0, 1, 254, 255]).toString('base64'))), [0, 1, 254, 255]);
 assert.equal(panel.LOG_LIMIT, 300);

@@ -48,7 +48,7 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--font-ui);
        -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
-button, input { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 .spacer { flex: 1; }
 
@@ -110,6 +110,8 @@ h1 { font-size: 22px; line-height: 1.3; margin: 0; font-weight: 700; letter-spac
 .banner.ok { background: var(--ok-tint); } .banner.ok::before { background: var(--ok); } .banner.ok .headline { color: var(--ok); }
 .banner.degraded { background: var(--degraded-tint); } .banner.degraded::before { background: var(--degraded); } .banner.degraded .headline { color: var(--degraded); }
 .banner.fail { background: var(--fail-tint); } .banner.fail::before { background: var(--fail); } .banner.fail .headline { color: var(--fail); }
+.leak-alert { height: auto; min-height: 48px; padding: 8px 14px 8px 22px; align-items: center; }
+.leak-alert .detail { color: var(--fail); font-weight: 600; white-space: normal; }
 
 .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
 .card { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 54px;
@@ -163,9 +165,16 @@ h1 { font-size: 22px; line-height: 1.3; margin: 0; font-weight: 700; letter-spac
 .field { display: grid; grid-template-columns: 76px 110px 1fr; align-items: center; gap: 12px; min-height: 40px; }
 .field .checks { grid-column: 2 / 4; }
 .field > .check { grid-column: 2 / 4; }
-.field input[type=number] { width: 100%; border: 1px solid var(--line); background: var(--soft); border-radius: 8px; padding: 5px 10px;
-                            font-variant-numeric: tabular-nums; user-select: text; }
-.field input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.field select, .field .input-row { grid-column: 2 / 4; min-width: 0; }
+.field .input-row { display: flex; gap: 8px; align-items: center; }
+.field input[type=number], .field input[type=text], .field select {
+  width: 100%; border: 1px solid var(--line); background: var(--soft); border-radius: 8px; padding: 5px 10px;
+  font-variant-numeric: tabular-nums; user-select: text;
+}
+.field select { max-width: 280px; }
+.field select option { background: var(--card); color: var(--ink); }
+.field .input-row input[type=text] { flex: 1; min-width: 0; font-size: 13px; }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 .field input:invalid { border-color: var(--fail); }
 .unit { color: var(--muted); }
 .checks { display: flex; gap: 24px; }
@@ -245,8 +254,11 @@ h1 { font-size: 22px; line-height: 1.3; margin: 0; font-weight: 700; letter-spac
 
 /* About */
 .about-card { display: flex; align-items: center; gap: 12px; padding: 16px 20px; margin-bottom: var(--gap); }
+.about-card > div { min-width: 0; }
 .about-name { font-size: 18px; font-weight: 700; }
 #about-version { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+.about-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.about-meta b { font-weight: 600; color: var(--ink); }
 .badge.update { background: var(--accent); }
 .update-releases { margin-bottom: var(--gap); display: grid; gap: var(--gap); }
 .release { padding: 14px 20px; border-color: var(--accent); }

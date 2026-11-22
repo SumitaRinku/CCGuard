@@ -309,7 +309,27 @@ class PanelApi:
         return self._ip
 
     def about(self):
-        return {'version': app_update.__version__, 'notes': app_update.release_notes()}
+        return {
+            'version': app_update.__version__,
+            'author': app_update.AUTHOR,
+            'license': app_update.LICENSE,
+            'repo_url': app_update.REPO_URL,
+            'issues_url': app_update.ISSUES_URL,
+            'releases_url': app_update.RELEASES_PAGE,
+            'notes': app_update.release_notes(),
+        }
+
+    def open_repo_link(self, kind='repo'):
+        """Open this repository's home, issues, or releases page in the browser."""
+        links = {
+            'repo': (app_update.REPO_URL, '已在浏览器打开 GitHub 仓库'),
+            'issues': (app_update.ISSUES_URL, '已在浏览器打开问题反馈页'),
+            'releases': (app_update.RELEASES_PAGE, '已在浏览器打开发布页'),
+        }
+        entry = links.get(kind)
+        if not entry or not app_update.allowed_repo_url(entry[0]):
+            return {'ok': False, 'message': '未知的仓库链接'}
+        return self._open(entry[0], entry[1])
 
     def _refresh_claude(self):
         self._claude_state = self._claude.status()
@@ -457,15 +477,27 @@ class PanelApi:
 
     def settings(self):
         alerts = self._cfg['alerts']
-        return {'interval': alerts['interval_seconds'], 'cooldown': alerts['cooldown_seconds'],
-                'notify': {name: name in alerts['notify_states'] for name in ('fail', 'degraded', 'unknown')},
-                'paused': bool(alerts.get('paused'))}
+        proxy = self._cfg.get('proxy') or {}
+        return {
+            'interval': alerts['interval_seconds'],
+            'cooldown': alerts['cooldown_seconds'],
+            'notify': {name: name in alerts['notify_states'] for name in ('fail', 'degraded', 'unknown')},
+            'paused': bool(alerts.get('paused')),
+            'client': proxy.get('client') or 'custom',
+            'clients': ([{'id': 'custom', 'label': '自动／自定义'}]
+                        + [{'id': key, 'label': preset['label']} for key, preset in engine.CLIENT_PRESETS.items()]),
+            'config_format': proxy.get('config_format') or 'auto',
+            'runtime_config': proxy.get('runtime_config') or '',
+        }
 
     def apply(self, form, save=False):
         form = form or {}
         try:
-            shared.apply_settings(self._cfg, form.get('interval'), form.get('cooldown'),
-                                  dict(form.get('notify') or {}), bool(form.get('paused')))
+            shared.apply_settings(
+                self._cfg, form.get('interval'), form.get('cooldown'),
+                dict(form.get('notify') or {}), bool(form.get('paused')),
+                client=form.get('client'), config_format=form.get('config_format'),
+                runtime_config=form.get('runtime_config'))
         except engine.MonitorError as error:
             return {'ok': False, 'message': '设置未生效：' + str(error)}
         alerts = self._cfg['alerts']
@@ -478,6 +510,64 @@ class PanelApi:
                 return {'ok': False, 'message': '保存失败，原配置未改动：' + str(error)}
         self._store.refresh_async()
         return {'ok': True, 'message': '已写入配置文件' if save else '设置已生效（本次运行）'}
+
+    def detect_runtime_config(self, client=None):
+        """Find a documented client runtime config path for the settings input; never logs paths."""
+        target = self._cfg.get('proxy', {}).get('client', '') if client is None else str(client or '')
+        hit = engine.find_runtime_config('' if target == 'custom' else target)
+        if not hit:
+            return {'ok': False, 'path': '', 'message': '未在默认位置找到运行配置，可手动填入或浏览选择'}
+        label, path = hit
+        return {'ok': True, 'path': str(path), 'label': label, 'message': '已找到 %s 的运行配置' % label}
+
+    def browse_runtime_config(self):
+        """Open a local file picker for the runtime config; returns '' when cancelled."""
+        if self._window is None:
+            return {'ok': False, 'path': ''}
+        try:
+            import webview
+            dialog_kind = getattr(getattr(webview, 'FileDialog', None), 'OPEN', None) or getattr(webview, 'OPEN_DIALOG', 10)
+            result = self._window.create_file_dialog(
+                dialog_kind, file_types=('配置文件 (*.yaml;*.yml;*.json)', '所有文件 (*.*)'))
+        except Exception:
+            return {'ok': False, 'path': ''}
+        chosen = result[0] if isinstance(result, (list, tuple)) and result else (result if isinstance(result, str) else '')
+        return {'ok': bool(chosen), 'path': chosen}
+
+    def diagnostic_summary(self):
+        """Sanitised multi-line summary for troubleshooting: no IP addresses, paths, or node names."""
+        state = self._store.read()
+        profile = engine.proxy_profile(self._cfg)
+        configured = bool((self._cfg.get('proxy') or {}).get('runtime_config'))
+        runtime_state = '已配置' if configured else ('自动识别' if profile['runtime_config'] else '未配置')
+        claude = self._claude_state or {}
+        claude_text = '后台运行' if claude.get('background') else ('运行中' if claude.get('running') else '未运行')
+        lines = [
+            'CCGuard v%s (%s)' % (app_update.__version__, state.get('overall', 'unknown')),
+            '客户端预设: %s / 配置格式: %s / 运行配置: %s' % (profile['client'], profile['config_format'], runtime_state),
+            'Claude 状态: %s' % claude_text,
+            '本机检查:',
+        ]
+        checks = state.get('checks') or []
+        if checks:
+            for item in checks:
+                lines.append('  - %s: %s (%s)' % (item.get('id'), item.get('state', 'unknown'), item.get('code') or '—'))
+        else:
+            lines.append('  - 无记录')
+        lines.append('稳定使用检查:')
+        for item in self.claude_code_checklist()['items']:
+            lines.append('  - %s: %s' % (item['id'], item['status']))
+        if self._ip and self._ip.get('ok'):
+            facts = self._ip.get('facts') or {}
+            flags = facts.get('flags') or []
+            flag_text = '，标记：%s' % '、'.join(flags) if flags else ''
+            lines.append('出口评分: 信任分 %s（%s，%s%s）' % (
+                self._ip.get('score'), self._ip.get('label'), facts.get('kind', '未知'), flag_text))
+        elif self._ip:
+            lines.append('出口评分: 检测失败')
+        else:
+            lines.append('出口评分: 未检测')
+        return '\n'.join(lines)
 
     def refresh(self):
         started = self._store.refresh_async()

@@ -22,6 +22,10 @@ import urllib.request
 from version import __version__
 
 REPO = 'SumitaRinku/CCGuard'
+AUTHOR = 'SumitaRinku'
+LICENSE = 'GPL-3.0-only'
+REPO_URL = 'https://github.com/%s' % REPO
+ISSUES_URL = REPO_URL + '/issues'
 RELEASES_API = 'https://api.github.com/repos/%s/releases?per_page=20' % REPO
 RELEASES_PAGE = 'https://github.com/%s/releases' % REPO
 LATEST_PAGE = RELEASES_PAGE + '/latest'
@@ -46,6 +50,11 @@ def parse_version(text):
 def allowed_url(url):
     """Only this repository's release pages and assets may be opened from the panel."""
     return isinstance(url, str) and (url == RELEASES_PAGE or url.startswith(RELEASES_PAGE + '/'))
+
+
+def allowed_repo_url(url):
+    """Allow this repository's home, issues, and release pages/assets."""
+    return isinstance(url, str) and (url in (REPO_URL, ISSUES_URL) or allowed_url(url))
 
 
 def plain_notes(markdown):
