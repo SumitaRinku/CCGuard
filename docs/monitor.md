@@ -212,23 +212,25 @@ Claude 桌面版以 MSIX 包安装（包名 `Claude_pzs8sxrjxfjjc`），关掉�
 <a id="claude-code-checklist"></a>
 ## Claude Code 检查清单
 
-条目参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，共 11 项。每项写明为什么、怎么做，能判断的给出“正常／需处理／未知”，不能从本机判断的标“自查”。
+条目参考 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html)，结合浏览器与客户端风控指纹特征整理，共 13 项。每项写明为什么、怎么做，能判断的给出“正常／需调整／未知”，不能从本机判断的标“自查”。
 
 | 项 | 依据 |
 | --- | --- |
 | 出口 IP 类型与地区 | 出口评分：住宅、无 VPN／代理标记、地区可用为正常 |
 | 出口 IP 固定 | 自查；出口评分为机房或有标记时提示 |
+| 本机时区与出口一致 | 出口评分返回的 IANA 时区与本机 UTC 偏移比对 |
 | 只走 TCP | 自查（关闭节点的 UDP／QUIC） |
 | TLS 指纹 | 代理配置的 `global-client-fingerprint` 或节点的 `client-fingerprint` |
 | DNS 走代理 | DNS 接管与网卡 DNS 两项检查 |
 | 关闭 IPv6 | 核心 IPv6 与系统 IPv6 两项检查 |
-| Claude 分流规则 | 配置里有没有 claude.ai／anthropic.com 规则，是否指向 DIRECT |
+| Claude 分流规则 | 配置里是否覆盖 `anthropic.com`／`claude.ai`／`claude.com`，是否指向 `DIRECT` 或含 `REJECT` |
 | 规则顺序 | Claude 规则是否排在 GEOIP、GEOSITE、MATCH 等大范围规则之前 |
 | 长连接 | `disable-keep-alive` 没有打开 |
 | 并发与使用节奏 | 自查 |
-| 流量路径 | 10 项本机检查是否全部正常 |
+| 网络路径短 | 出口评分：出口所在地区位于亚洲或北美为正常 |
+| 固定客户端与浏览器环境 | 自查（同设备多号切换、指纹篡改或自动化驱动风险提示） |
 
-只读取 Clash／Mihomo 格式的运行配置，结果里只有模式、计数和规则序号，不含节点名、分组名、地址和凭据。
+只读取 Clash／Mihomo 格式的运行配置，结果里只有模式、计数、规则序号、是否缺失必需域名和是否含直连／拦截标记，不含节点名、分组名、地址和凭据。
 
 <a id="tray-quit"></a>
 ## 托盘退出与打开面板

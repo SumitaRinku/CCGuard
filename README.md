@@ -41,7 +41,7 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 | **出口评分** | “出口”页一键查看当前出口 IP 的信任分、类型（住宅／机房）、地区与地区核对、运营商、逐项风险标记、滥用评分、反向解析、RPKI、出口时区与本机时区对比、Cloudflare 节点，数据来自 [ip.net.coffee](https://ip.net.coffee/claude/)；可在浏览器打开完整检测页。检测过程不连接 Claude，见 [出口评分](docs/monitor.md#exit-score) |
 | **Claude 后台提醒** | Claude 桌面版（MSIX）关掉窗口后仍在后台运行并联网；面板顶部和“Claude”页显示它是否在运行、有没有窗口、带着几个 Claude Code 会话，可一键结束全部进程并停止它的后台服务 CoworkVMService。只看进程和服务状态，不连接 Claude。建议使用桌面版（Desktop），不建议使用命令行版（CLI） |
 | **Claude 开机自启** | 查出 Claude 的应用启动任务（StartupTask）、注册表 Run 项和启动文件夹快捷方式，开着的可在面板里直接关闭，效果与任务管理器“禁用”相同 |
-| **Claude Code 检查清单** | 按 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html) 整理 11 项：出口 IP、TLS 指纹、DNS、IPv6、分流规则顺序、长连接等。能从本机检查、出口评分和代理配置判断的项直接给出结果，其余给出自查方法 |
+| **Claude Code 检查清单** | 按 [ip.net.coffee 的 Claude Code 稳定使用指南](https://ip.net.coffee/claude/claudecode.html) 与风控指纹特征整理 13 项：出口 IP、时区一致性、TLS 指纹、DNS、IPv6、分流规则覆盖（含 `claude.com` 与防拦截）与顺序、长连接、固定客户端环境等。能从本机检查、出口评分和代理配置判断的项直接给出结果，其余给出自查方法 |
 | **窗口 + 托盘 + 网页** | WebView 面板（默认）／tkinter 面板（回退）、托盘通知、`127.0.0.1` 本地网页备选 |
 | **系统通知** | 任一项失效立即提醒（不受冷却限制），降级带冷却，恢复也提示；监测进程意外退出、读不到本机状态、监测停止更新时也会提醒；可暂停 |
 | **可选开机自启** | 当前用户 Startup 快捷方式，登录后隐藏到托盘；默认关闭，可随时撤销 |
