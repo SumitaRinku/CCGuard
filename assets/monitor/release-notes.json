@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.7.6",
+    "date": "2026-11-22",
+    "items": [
+      "Claude Code 检查清单新增“本机时区与出口一致”自动检查，检测出口后对比本机与出口 IP 的时区偏移",
+      "检查清单新增“固定客户端与浏览器环境”指引，提醒避免同设备多号切换、指纹篡改或自动化驱动",
+      "细化 Clash／Mihomo 分流规则检查：核对是否同时覆盖 anthropic.com、claude.ai 与 claude.com，并识别针对 Claude 域名的 REJECT 拦截规则"
+    ]
+  },
+  {
     "version": "0.7.5",
     "date": "2026-11-21",
     "items": [

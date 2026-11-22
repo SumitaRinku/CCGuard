@@ -78,9 +78,9 @@ CCGuard 自己不连接 Claude，也不改系统设置：10 项检查只读本�
 
 ### 2. 安装
 
-**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.5.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.5/CCGuard-Setup-0.7.5.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
+**安装程序（推荐）**：下载 [`CCGuard-Setup-0.7.6.exe`](https://github.com/SumitaRinku/CCGuard/releases/download/v0.7.6/CCGuard-Setup-0.7.6.exe)，双击安装。不需要 Python，也不需要管理员：程序装到当前用户的 `%LOCALAPPDATA%\Programs\CCGuard`，带开始菜单和桌面图标，可在“设置 → 应用 → 已安装的应用”里卸载。卸载会删掉程序、快捷方式和开机自启项，保留你的 `monitor.json` 与 `history.jsonl`。
 
-安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.5.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
+安装程序由 GitHub Actions 从源码构建，安装、自检、卸载验证通过后才附到 Release，同目录的 `SHA256SUMS-installer-0.7.6.txt` 可核对哈希。安装程序没有代码签名，首次运行时 Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点“更多信息 → 仍要运行”即可。
 
 **源码运行**：需要 Python 3.10+（官方安装包通常自带 tkinter）。下载 Release 页的 “Source code (zip)” 或克隆仓库：
 

@@ -2,6 +2,14 @@
 
 每个版本给出主要变化与验证方式；逐次提交的细节见 git 历史。面向用户的简短更新日志在 `assets/monitor/release-notes.json`，面板“关于”页显示。
 
+## 0.7.6（2026-11-22）
+
+- Claude Code 检查清单由 11 项扩展为 13 项（提交 `fd5c0b2`）。
+- 新增“本机时区与出口一致”自动检查（`timezone_match`）：出口评分后对比出口 IP 的 IANA 时区与本机 UTC 偏移；优先使用标准库 `zoneinfo`，无 `tzdata` 的冻结构建回退到内置夏令时感知偏移表。
+- 新增“固定客户端与浏览器环境”自查项（`device_env`）：提醒固定单一客户端与账号，避免同设备多号切换、指纹伪装或自动化驱动。
+- 细化 Clash／Mihomo 分流规则检测：要求同时覆盖 `anthropic.com`、`claude.ai` 与 `claude.com`（支持 `DOMAIN`、`DOMAIN-SUFFIX`、`DOMAIN-KEYWORD`、`DOMAIN-REGEX`、`RULE-SET`），并检测含 `REJECT`／`REJECT-DROP` 的拦截规则（不回传任何节点名、分组名或地址）。
+- 验证：本机 Windows 11（Python 3.12.9）通过 335 项单元测试（跳过 1 项自备字体测试）、Node 页面逻辑检查、`compileall`；推送 CI（Linux 3.12 / 3.10、Windows 3.12）与 `Windows installer` 打包验证均通过。
+
 ## 0.7.5（2026-11-21）
 
 - 发布：本仓库 `v0.7.5`（提交 `df50371`），同时包含上面“常驻探测进程”的修复。`CCGuard-Setup-0.7.5.exe` SHA-256 `884e0066986d7c7c15dc4d53275cbcd94ef71e8812346eb5a17c833795bd9f01`，另附 `SHA256SUMS-installer-0.7.5.txt`；下载回的资产哈希一致。发布构建通过打包自检 26 项、静默安装、安装后自检、静默卸载；推送 CI 通过。
